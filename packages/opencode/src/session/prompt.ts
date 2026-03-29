@@ -193,6 +193,7 @@ export namespace SessionPrompt {
       {
         type: "text",
         text: template,
+        synthetic: true,
       },
     ]
     const files = ConfigMarkdown.files(template)
@@ -1941,7 +1942,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
             prompt: templateParts.find((y) => y.type === "text")?.text ?? "",
           },
         ]
-      : [...templateParts, ...(input.parts ?? [])]
+      : [
+          ...templateParts,
+          {
+            type: "text" as const,
+            text: `Running skill: ${input.command}`,
+            ignored: true,
+          },
+          ...(input.parts ?? []),
+        ]
 
     const userAgent = isSubtask ? (input.agent ?? (await Agent.defaultAgent())) : agentName
     const userModel = isSubtask
