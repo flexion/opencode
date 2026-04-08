@@ -193,7 +193,8 @@ export namespace LLM {
           },
         )
 
-        const tools = resolveTools(input)
+        const canTool = input.model.capabilities.toolcall
+        const tools = canTool ? resolveTools(input) : {}
 
         // LiteLLM and some Anthropic proxies require the tools parameter to be present
         // when message history contains tool calls, even if no tools are being used.
@@ -211,6 +212,7 @@ export namespace LLM {
         // during compaction), inject a stub tool to satisfy the validation requirement.
         // The stub description explicitly tells the model not to call it.
         if (
+          canTool &&
           (isLiteLLMProxy || input.model.providerID.includes("github-copilot")) &&
           Object.keys(tools).length === 0 &&
           hasToolCalls(input.messages)
@@ -350,9 +352,13 @@ export namespace LLM {
           topP: params.topP,
           topK: params.topK,
           providerOptions: ProviderTransform.providerOptions(input.model, params.options),
-          activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
-          tools,
-          toolChoice: input.toolChoice,
+          ...(canTool
+            ? {
+                activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+                tools,
+              }
+            : {}),
+          ...(canTool ? { toolChoice: input.toolChoice } : {}),
           maxOutputTokens: params.maxOutputTokens,
           abortSignal: input.abort,
           headers: {
