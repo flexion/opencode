@@ -232,6 +232,14 @@ for (const item of targets) {
     },
   })
 
+  // On macOS, Bun's embedded code signature is rejected by Darwin 25+.
+  // Strip it and apply a fresh ad-hoc signature so the binary can run.
+  if (item.os === "darwin") {
+    const binaryPath = `dist/${name}/bin/opencode`
+    await $`codesign --remove-signature ${binaryPath}`.quiet()
+    await $`codesign --sign - --force ${binaryPath}`.quiet()
+  }
+
   // Smoke test: only run if binary is for current platform
   if (item.os === process.platform && item.arch === process.arch && !item.abi) {
     const binaryPath = `dist/${name}/bin/opencode`
