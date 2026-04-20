@@ -50,6 +50,15 @@ function normalizeMessages(
   model: Provider.Model,
   _options: Record<string, unknown>,
 ): ModelMessage[] {
+  // Strip reasoning parts from assistant messages for models that don't support reasoning
+  if (!model.capabilities.reasoning) {
+    msgs = msgs.map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+      const filtered = msg.content.filter((part) => (part as any).type !== "reasoning")
+      return { ...msg, content: filtered }
+    })
+  }
+
   // Anthropic rejects messages with empty content - filter out empty string messages
   // and remove empty text/reasoning parts from array content
   if (model.api.npm === "@ai-sdk/anthropic") {
@@ -452,7 +461,8 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
     id.includes("kimi") ||
     id.includes("k2p") ||
     id.includes("qwen") ||
-    id.includes("big-pickle")
+    id.includes("big-pickle") ||
+    id.includes("palmyra")
   )
     return {}
 
