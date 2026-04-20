@@ -172,6 +172,7 @@ See [flexion/opencode#2](https://github.com/flexion/opencode/pull/2) for the ful
 |--------|---------|-------------|
 | Hide skill prompt text from chat UI | `packages/opencode/src/session/prompt.ts` | Marks skill template as `synthetic` so the full prompt is sent to the model but hidden from the user |
 | Respect `tool_call: false` at runtime | `packages/opencode/src/session/llm.ts` | Gates tool resolution behind `capabilities.toolcall` — fixes failures on Bedrock models that don't support streaming + tool use |
+| Re-sign macOS binaries after build | `packages/opencode/script/build.ts` | Strips Bun's embedded signature and applies a fresh ad-hoc one — fixes SIGKILL (exit 137) on Darwin 25+ where Bun's signature format is rejected |
 | Local build & AWS Bedrock setup docs | `LOCAL_AWS_SETUP.md` | This file |
 
 Full details and upstream tracking: [flexion/opencode#2](https://github.com/flexion/opencode/pull/2)
