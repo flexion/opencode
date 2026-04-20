@@ -328,6 +328,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
                 "nova-2",
                 "claude",
                 "deepseek",
+                "palmyra",
+                "pixtral",
               ].some((m) => modelID.includes(m))
               const isGovCloud = region.startsWith("us-gov")
               if (modelRequiresPrefix && !isGovCloud) {

@@ -977,6 +977,50 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
     ])
     expect(result[0].providerOptions?.openaiCompatible?.reasoning_content).toBeUndefined()
   })
+
+  test("Palmyra models strip reasoning content (Bedrock rejects reasoning parts)", () => {
+    const msgs = [
+      {
+        role: "assistant",
+        content: [
+          { type: "reasoning", text: "Internal reasoning" },
+          { type: "text", text: "Answer" },
+        ],
+      },
+    ] as any[]
+
+    const result = ProviderTransform.message(
+      msgs,
+      {
+        id: ModelID.make("amazon-bedrock/writer.palmyra-x5-v1"),
+        providerID: ProviderID.make("amazon-bedrock"),
+        api: {
+          id: "writer.palmyra-x5-v1",
+          url: "https://bedrock.us-east-1.amazonaws.com",
+          npm: "@ai-sdk/amazon-bedrock",
+        },
+        name: "Palmyra X5",
+        capabilities: {
+          temperature: true,
+          reasoning: false,
+          attachment: false,
+          toolcall: true,
+          input: { text: true, audio: false, image: false, video: false, pdf: false },
+          output: { text: true, audio: false, image: false, video: false, pdf: false },
+          interleaved: false,
+        },
+        cost: { input: 0, output: 0, cache: { read: 0, write: 0 } },
+        limit: { context: 128000, output: 8192 },
+        status: "active",
+        options: {},
+        headers: {},
+        release_date: "2025-01-01",
+      },
+      {},
+    )
+
+    expect(result[0].content).toEqual([{ type: "text", text: "Answer" }])
+  })
 })
 
 describe("ProviderTransform.message - empty image handling", () => {
