@@ -356,6 +356,8 @@ export namespace Provider {
                   "nova-2",
                   "claude",
                   "deepseek",
+                  "palmyra",
+                  "pixtral",
                 ].some((m) => modelID.includes(m))
                 const isGovCloud = region.startsWith("us-gov")
                 if (modelRequiresPrefix && !isGovCloud) {
