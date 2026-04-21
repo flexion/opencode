@@ -506,10 +506,11 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       },
     },
     {
-      title: "Session tools",
+      title: "Select MCP tools",
       value: "session.tools",
-      keybind: "session_tools",
+      keybind: undefined,
       category: "Agent",
+      slash: { name: "tools" },
       onSelect: () => {
         const id = route.data.type === "session" ? route.data.sessionID : undefined
         dialog.replace(() => (
@@ -519,8 +520,28 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
               if (id) {
                 // Mid-session: apply updated deny/allow rules directly
                 const mcp = sdk.client.mcp
-                void mcp.tools().then((res) => {
+                void mcp.tools().then(async (res) => {
                   if (!res.data) return
+                  
+                  // Check which MCP servers have all tools disabled
+                  const serversToDisable: string[] = []
+                  const serversToEnable: string[] = []
+                  
+                  for (const [serverName, serverTools] of Object.entries(res.data)) {
+                    const toolKeys = serverTools.map((t) => t.key)
+                    const enabledTools = filter === "all" 
+                      ? toolKeys 
+                      : toolKeys.filter((k) => (filter as string[]).includes(k))
+                    
+                    if (enabledTools.length === 0) {
+                      // All tools disabled - disable the MCP server
+                      serversToDisable.push(serverName)
+                    } else if (enabledTools.length === toolKeys.length) {
+                      // All tools enabled - ensure MCP server is enabled
+                      serversToEnable.push(serverName)
+                    }
+                  }
+
                   const all = Object.values(res.data).flatMap((list) => list.map((t) => t.key))
                   const rules =
                     filter === "all"
@@ -536,7 +557,20 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
                           })),
                         ]
                   if (rules.length > 0) {
-                    void sdk.client.session.update({ sessionID: id, permission: rules })
+                    await sdk.client.session.update({ sessionID: id, permission: rules })
+                  }
+
+                  // Disable/enable MCP servers as needed
+                  for (const serverName of serversToDisable) {
+                    console.log(`[Command] Disabling MCP server: ${serverName}`)
+                    await local.mcp.toggle(serverName)
+                  }
+                  for (const serverName of serversToEnable) {
+                    const status = Object.entries(sync.data.mcp).find(([name]) => name === serverName)?.[1]
+                    if (status?.status === "disabled") {
+                      console.log(`[Command] Enabling MCP server: ${serverName}`)
+                      await local.mcp.toggle(serverName)
+                    }
                   }
                 })
               } else {

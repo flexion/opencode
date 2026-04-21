@@ -22,6 +22,8 @@ export function DialogSessionTools(props: Props) {
   const [toolMap, setToolMap] = createSignal<Record<string, McpTool[]>>({})
   const [loading, setLoading] = createSignal(true)
   const [chosen, setChosen] = createSignal<Set<string>>(new Set())
+  const [collapsed, setCollapsed] = createSignal<Set<string>>(new Set())
+  const [searchQuery, setSearchQuery] = createSignal("")
 
   onMount(async () => {
     dialog.setSize("large")
@@ -69,26 +71,76 @@ export function DialogSessionTools(props: Props) {
 
   const options = createMemo((): DialogSelectOption<string>[] => {
     const sel = chosen()
-    return Object.entries(toolMap()).flatMap(([server, list]) =>
-      list.map((tool) => ({
-        value: tool.key,
-        title: tool.name,
-        description: tool.description || undefined,
-        category: server,
-        categoryView: (
-          <text fg={theme.accent} attributes={TextAttributes.BOLD}>
-            {server}
-            <span style={{ fg: theme.textMuted }}>{" "}~{(serverTokens()[server] ?? 0).toLocaleString()}tk</span>
-          </text>
-        ) as any,
-        footer: `~${tool.tokenEstimate}tk`,
-        gutter: (
-          <text fg={sel.has(tool.key) ? theme.success : theme.textMuted}>
-            {sel.has(tool.key) ? "[✓]" : "[ ]"}
-          </text>
-        ) as any,
-      })),
-    )
+    const collapsedSet = collapsed()
+    const isSearching = searchQuery().trim().length > 0
+
+    return Object.entries(toolMap()).flatMap(([server, list]) => {
+      const isCollapsed = collapsedSet.has(server) && !isSearching
+      const selectedCount = list.filter((t) => sel.has(t.key)).length
+      const serverTk = serverTokens()[server] ?? 0
+
+      // If collapsed, return only a summary row
+      if (isCollapsed) {
+        return [
+          {
+            value: `__server_header__${server}`,
+            title: server,
+            description: `${list.length} tools, ${selectedCount} selected, ~${serverTk.toLocaleString()}tk`,
+            category: server,
+            categoryView: (
+              <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+                <span style={{ fg: theme.textMuted }}>▶ </span>
+                {server}
+                <span style={{ fg: theme.textMuted }}>
+                  {" "}
+                  {list.length} tools, {selectedCount} selected, ~{serverTk.toLocaleString()}tk
+                </span>
+              </text>
+            ) as any,
+            gutter: (
+              <text fg={theme.textMuted}>
+                {" ".repeat(3)}
+              </text>
+            ) as any,
+          },
+        ]
+      }
+
+      // Expanded: show header + all tools
+      return [
+        // Server header (clickable to collapse)
+        {
+          value: `__server_header__${server}`,
+          title: server,
+          category: server,
+          categoryView: (
+            <text fg={theme.accent} attributes={TextAttributes.BOLD}>
+              <span style={{ fg: theme.textMuted }}>▼ </span>
+              {server}
+              <span style={{ fg: theme.textMuted }}>{" "}~{serverTk.toLocaleString()}tk</span>
+            </text>
+          ) as any,
+          gutter: (
+            <text fg={theme.textMuted}>
+              {" ".repeat(3)}
+            </text>
+          ) as any,
+        },
+        // All tools in this server
+        ...list.map((tool) => ({
+          value: tool.key,
+          title: tool.name,
+          description: tool.description || undefined,
+          category: server,
+          footer: `~${tool.tokenEstimate}tk`,
+          gutter: (
+            <text fg={sel.has(tool.key) ? theme.success : theme.textMuted}>
+              {sel.has(tool.key) ? "[✓]" : "[ ]"}
+            </text>
+          ) as any,
+        })),
+      ]
+    })
   })
 
   function toggle(key: string) {
@@ -98,6 +150,23 @@ export function DialogSessionTools(props: Props) {
       else next.add(key)
       return next
     })
+  }
+
+  function toggleServerCollapse(server: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(server)) next.delete(server)
+      else next.add(server)
+      return next
+    })
+  }
+
+  function getServerFromKey(key: string): string | null {
+    for (const [server, list] of Object.entries(toolMap())) {
+      if (list.some((t) => t.key === key)) return server
+      if (key === `__server_header__${server}`) return server
+    }
+    return null
   }
 
   function selectAll() {
@@ -120,7 +189,23 @@ export function DialogSessionTools(props: Props) {
     {
       keybind: Keybind.parse("space")[0],
       title: "toggle",
-      onTrigger: (opt: DialogSelectOption<string>) => toggle(opt.value),
+      onTrigger: (opt: DialogSelectOption<string>) => {
+        // If it's a server header, toggle collapse; otherwise toggle tool selection
+        if (opt.value.startsWith("__server_header__")) {
+          const server = opt.value.replace("__server_header__", "")
+          toggleServerCollapse(server)
+        } else {
+          toggle(opt.value)
+        }
+      },
+    },
+    {
+      keybind: Keybind.parse("c")[0],
+      title: "collapse",
+      onTrigger: (opt: DialogSelectOption<string>) => {
+        const server = getServerFromKey(opt.value)
+        if (server) toggleServerCollapse(server)
+      },
     },
     {
       keybind: Keybind.parse("a")[0],
@@ -156,8 +241,15 @@ export function DialogSessionTools(props: Props) {
       flat
       options={options()}
       keybind={keybinds()}
+      onFilter={(query) => setSearchQuery(query)}
       onSelect={(opt) => {
-        // Enter on an option = confirm the current selection
+        // If user pressed Enter on a server header, toggle collapse instead of confirming
+        if (opt.value.startsWith("__server_header__")) {
+          const server = opt.value.replace("__server_header__", "")
+          toggleServerCollapse(server)
+          return
+        }
+        // Enter on a tool = confirm the current selection
         confirm()
         dialog.clear()
       }}

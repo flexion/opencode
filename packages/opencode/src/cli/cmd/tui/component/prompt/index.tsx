@@ -683,24 +683,53 @@ export function Prompt(props: PromptProps) {
     if (sessionID == null) {
       // Intercept on first message: show tool selection dialog if any MCP servers are connected
       // and the dialog hasn't been shown yet for this session (pending === null).
-      const hasMcp = Object.values(sync.data.mcp ?? {}).some((s) => s.status === "connected")
-      if (hasMcp && local.sessionTools.pending() === null) {
+      // Wait for MCP status to be fully loaded before checking
+      if (sync.status !== "complete") {
+        console.log("[MCP Dialog] Waiting for sync to complete (status: %s)", sync.status)
+        toast.show({
+          message: "Loading MCP servers...",
+          variant: "info",
+        })
+        return false
+      }
+
+      const mcpServers = Object.values(sync.data.mcp ?? {})
+      const connectedServers = mcpServers.filter((s) => s.status === "connected")
+      const hasMcp = connectedServers.length > 0
+      const pending = local.sessionTools.pending()
+
+      console.log("[MCP Dialog] Check:", {
+        hasMcp,
+        connectedCount: connectedServers.length,
+        totalServers: mcpServers.length,
+        pending,
+        servers: Object.entries(sync.data.mcp ?? {}).map(([name, s]) => ({ name, status: s.status })),
+      })
+
+      if (hasMcp && pending === null) {
+        console.log("[MCP Dialog] Showing tool selection dialog")
         local.sessionTools.setPending(store.prompt.input)
         local.sessionTools.setResume(() => submit())
         dialog.replace(() => (
           <DialogSessionTools
             onConfirm={(filter) => {
+              console.log("[MCP Dialog] User confirmed with filter:", filter)
               local.sessionTools.set(filter)
               dialog.clear()
               local.sessionTools.callResume()
             }}
             onDismiss={() => {
+              console.log("[MCP Dialog] User dismissed dialog, using all tools")
               dialog.clear()
               local.sessionTools.callResume()
             }}
           />
         ))
         return false
+      } else if (hasMcp && pending !== null) {
+        console.log("[MCP Dialog] Skipping - dialog already shown (pending is not null)")
+      } else if (!hasMcp) {
+        console.log("[MCP Dialog] Skipping - no connected MCP servers")
       }
 
       const res = await sdk.client.session.create({ workspace: props.workspaceID })
@@ -773,6 +802,83 @@ export function Prompt(props: PromptProps) {
         command: inputText,
       })
       setStore("mode", "normal")
+    } else if (inputText.trim() === "/tools") {
+      // Special command: open MCP tool selection dialog
+      console.log("[/tools command] Opening tool selection dialog")
+      dialog.replace(() => (
+        <DialogSessionTools
+          sessionID={sessionID}
+          onConfirm={(filter) => {
+            if (sessionID) {
+              // Mid-session: apply updated deny/allow rules directly
+              const mcp = sdk.client.mcp
+              void mcp.tools().then(async (res) => {
+                if (!res.data) return
+                
+                // Check which MCP servers have all tools disabled
+                const serversToDisable: string[] = []
+                const serversToEnable: string[] = []
+                
+                for (const [serverName, serverTools] of Object.entries(res.data)) {
+                  const toolKeys = serverTools.map((t) => t.key)
+                  const enabledTools = filter === "all" 
+                    ? toolKeys 
+                    : toolKeys.filter((k) => (filter as string[]).includes(k))
+                  
+                  if (enabledTools.length === 0) {
+                    // All tools disabled - disable the MCP server
+                    serversToDisable.push(serverName)
+                  } else if (enabledTools.length === toolKeys.length) {
+                    // All tools enabled - ensure MCP server is enabled
+                    serversToEnable.push(serverName)
+                  }
+                }
+
+                const all = Object.values(res.data).flatMap((list) => list.map((t) => t.key))
+                const rules =
+                  filter === "all"
+                    ? all.map((k) => ({ permission: k, pattern: "*", action: "allow" as const }))
+                    : [
+                        ...all
+                          .filter((k) => !(filter as string[]).includes(k))
+                          .map((k) => ({ permission: k, pattern: "*", action: "deny" as const })),
+                        ...(filter as string[]).map((k) => ({
+                          permission: k,
+                          pattern: "*",
+                          action: "allow" as const,
+                        })),
+                      ]
+                if (rules.length > 0) {
+                  await sdk.client.session.update({ sessionID, permission: rules })
+                }
+
+                // Disable/enable MCP servers as needed
+                for (const serverName of serversToDisable) {
+                  console.log(`[/tools command] Disabling MCP server: ${serverName}`)
+                  await local.mcp.toggle(serverName)
+                }
+                for (const serverName of serversToEnable) {
+                  const status = Object.entries(sync.data.mcp).find(([name]) => name === serverName)?.[1]
+                  if (status?.status === "disabled") {
+                    console.log(`[/tools command] Enabling MCP server: ${serverName}`)
+                    await local.mcp.toggle(serverName)
+                  }
+                }
+              })
+            } else {
+              // Home screen (pre-session): store for use when first message is sent
+              local.sessionTools.set(filter)
+            }
+            dialog.clear()
+          }}
+          onDismiss={() => dialog.clear()}
+        />
+      ))
+      // Clear the input
+      input.clear()
+      setStore("prompt", { input: "", parts: [] })
+      setStore("extmarkToPartIndex", new Map())
+      return true
     } else if (
       inputText.startsWith("/") &&
       iife(() => {

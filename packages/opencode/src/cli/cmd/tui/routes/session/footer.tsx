@@ -1,24 +1,59 @@
-import { createMemo, Match, onCleanup, onMount, Show, Switch } from "solid-js"
+import { createMemo, createResource, Match, onCleanup, onMount, Show, Switch } from "solid-js"
 import { useTheme } from "../../context/theme"
 import { useSync } from "../../context/sync"
 import { useDirectory } from "../../context/directory"
 import { useConnected } from "../../component/dialog-model"
 import { createStore } from "solid-js/store"
 import { useRoute } from "../../context/route"
+import { useSDK } from "../../context/sdk"
 
 export function Footer() {
   const { theme } = useTheme()
   const sync = useSync()
   const route = useRoute()
+  const sdk = useSDK()
   const mcp = createMemo(() => Object.values(sync.data.mcp).filter((x) => x.status === "connected").length)
   const mcpError = createMemo(() => Object.values(sync.data.mcp).some((x) => x.status === "failed"))
   const lsp = createMemo(() => Object.keys(sync.data.lsp))
   const permissions = createMemo(() => {
     if (route.data.type !== "session") return []
-    return sync.data.permission[route.data.sessionID] ?? []
+    const session = sync.session.get(route.data.sessionID)
+    return session?.permission ?? []
   })
   const directory = useDirectory()
   const connected = useConnected()
+
+  // Fetch MCP tools to check which are disabled
+  const [mcpTools] = createResource(
+    () => (route.data.type === "session" && mcp() > 0 ? route.data.sessionID : null),
+    async () => {
+      const res = await sdk.client.mcp.tools()
+      return res.data ?? {}
+    },
+  )
+
+  // Check if any MCP has some (but not all) tools disabled
+  const mcpPartiallyDisabled = createMemo(() => {
+    const tools = mcpTools()
+    if (!tools || route.data.type !== "session") return false
+
+    const perms = permissions()
+    const mcpServers = Object.entries(sync.data.mcp).filter(([_, s]) => s.status === "connected")
+
+    for (const [serverName, serverTools] of Object.entries(tools)) {
+      const toolKeys = serverTools.map((t) => t.key)
+      const disabledCount = toolKeys.filter((key) => {
+        const rule = [...perms].reverse().find((r) => r.permission === key || r.permission === "*")
+        return rule && rule.action === "deny" && rule.pattern === "*"
+      }).length
+
+      // If some tools are disabled but not all, it's partially disabled
+      if (disabledCount > 0 && disabledCount < toolKeys.length) {
+        return true
+      }
+    }
+    return false
+  })
 
   const [store, setStore] = createStore({
     welcome: false,
@@ -74,6 +109,9 @@ export function Footer() {
                 <Switch>
                   <Match when={mcpError()}>
                     <span style={{ fg: theme.error }}>⊙ </span>
+                  </Match>
+                  <Match when={mcpPartiallyDisabled()}>
+                    <span style={{ fg: theme.warning }}>⊙ </span>
                   </Match>
                   <Match when={true}>
                     <span style={{ fg: theme.success }}>⊙ </span>
