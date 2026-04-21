@@ -122,7 +122,7 @@ Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 opencode-work() {
-  local profile="AdministratorAccess"
+  local profile="ClaudeCodeAccess"
   local opencode_args=()
 
   # If first arg looks like a session ID, convert it to -s <session_id>
@@ -138,6 +138,7 @@ opencode-work() {
     /path/to/opencode/packages/opencode/dist/opencode-darwin-arm64/bin/opencode "${opencode_args[@]}"
     return
   fi
+
 
   echo "Logging in to AWS SSO ($profile)..."
   aws sso login --profile "$profile" || return 1
