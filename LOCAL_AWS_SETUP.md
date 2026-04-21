@@ -122,7 +122,7 @@ Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 opencode-work() {
-  local profile="AdministratorAccess"
+  local profile="ClaudeCodeAccess"
   echo "Logging in to AWS SSO ($profile)..."
   aws sso login --profile "$profile" || return 1
   eval "$(aws configure export-credentials --profile "$profile" --format env)"
