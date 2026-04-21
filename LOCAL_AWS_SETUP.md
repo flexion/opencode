@@ -45,7 +45,7 @@ Verify the build:
 Add to `~/.aws/config`:
 
 ```ini
-[profile AdministratorAccess]
+[profile ClaudeCodeAccess]
 sso_start_url = <your-sso-start-url>
 sso_region = <your-sso-region>
 sso_account_id = <your-account-id>
