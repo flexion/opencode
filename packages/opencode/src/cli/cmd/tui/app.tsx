@@ -30,6 +30,7 @@ import { SyncProvider, useSync } from "@tui/context/sync"
 import { LocalProvider, useLocal } from "@tui/context/local"
 import { DialogModel, useConnected } from "@tui/component/dialog-model"
 import { DialogMcp } from "@tui/component/dialog-mcp"
+import { DialogSessionTools } from "@tui/component/dialog-session-tools"
 import { DialogStatus } from "@tui/component/dialog-status"
 import { DialogThemeList } from "@tui/component/dialog-theme-list"
 import { DialogHelp } from "./ui/dialog-help"
@@ -502,6 +503,51 @@ function App(props: { onSnapshot?: () => Promise<string[]> }) {
       },
       onSelect: () => {
         dialog.replace(() => <DialogMcp />)
+      },
+    },
+    {
+      title: "Session tools",
+      value: "session.tools",
+      keybind: "session_tools",
+      category: "Agent",
+      onSelect: () => {
+        const id = route.data.type === "session" ? route.data.sessionID : undefined
+        dialog.replace(() => (
+          <DialogSessionTools
+            sessionID={id}
+            onConfirm={(filter) => {
+              if (id) {
+                // Mid-session: apply updated deny/allow rules directly
+                const mcp = sdk.client.mcp
+                void mcp.tools().then((res) => {
+                  if (!res.data) return
+                  const all = Object.values(res.data).flatMap((list) => list.map((t) => t.key))
+                  const rules =
+                    filter === "all"
+                      ? all.map((k) => ({ permission: k, pattern: "*", action: "allow" as const }))
+                      : [
+                          ...all
+                            .filter((k) => !(filter as string[]).includes(k))
+                            .map((k) => ({ permission: k, pattern: "*", action: "deny" as const })),
+                          ...(filter as string[]).map((k) => ({
+                            permission: k,
+                            pattern: "*",
+                            action: "allow" as const,
+                          })),
+                        ]
+                  if (rules.length > 0) {
+                    void sdk.client.session.update({ sessionID: id, permission: rules })
+                  }
+                })
+              } else {
+                // Home screen (pre-session): store for use when first message is sent
+                local.sessionTools.set(filter)
+              }
+              dialog.clear()
+            }}
+            onDismiss={() => dialog.clear()}
+          />
+        ))
       },
     },
     {

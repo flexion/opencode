@@ -222,6 +222,7 @@ export interface Interface {
   readonly status: () => Effect.Effect<Record<string, Status>>
   readonly clients: () => Effect.Effect<Record<string, MCPClient>>
   readonly tools: () => Effect.Effect<Record<string, Tool>>
+  readonly defs: () => Effect.Effect<Record<string, MCPToolDef[]>>
   readonly prompts: () => Effect.Effect<Record<string, PromptInfo & { client: string }>>
   readonly resources: () => Effect.Effect<Record<string, ResourceInfo & { client: string }>>
   readonly add: (name: string, mcp: ConfigMCP.Info) => Effect.Effect<{ status: Record<string, Status> | Status }>
@@ -665,6 +666,12 @@ export const layer = Layer.effect(
       return result
     })
 
+    const defsList = Effect.fn("MCP.defs")(function* () {
+      const s: State = yield* InstanceState.get(state)
+      const result: Record<string, MCPToolDef[]> = { ...s.defs }
+      return result
+    })
+
     function collectFromConnected<T extends { name: string }>(
       s: State,
       listFn: (c: Client) => Promise<T[]>,
@@ -899,6 +906,7 @@ export const layer = Layer.effect(
       status,
       clients,
       tools,
+      defs: defsList,
       prompts,
       resources,
       add,

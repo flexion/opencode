@@ -5008,6 +5008,32 @@ export type McpDisconnectResponses = {
 
 export type McpDisconnectResponse = McpDisconnectResponses[keyof McpDisconnectResponses]
 
+export type McpToolsData = {
+  body?: never
+  path?: never
+  query?: {
+    directory?: string
+    workspace?: string
+  }
+  url: "/mcp/tools"
+}
+
+export type McpToolsResponses = {
+  /**
+   * MCP tools grouped by server
+   */
+  200: {
+    [key: string]: Array<{
+      name: string
+      key: string
+      description: string
+      tokenEstimate: number
+    }>
+  }
+}
+
+export type McpToolsResponse = McpToolsResponses[keyof McpToolsResponses]
+
 export type TuiAppendPromptData = {
   body?: {
     text: string

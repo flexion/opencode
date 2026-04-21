@@ -256,5 +256,53 @@ export const McpRoutes = lazy(() =>
           yield* mcp.disconnect(name)
           return true
         }),
+    )
+    .get(
+      "/tools",
+      describeRoute({
+        summary: "List MCP tools",
+        description: "List all individual tools from connected MCP servers, grouped by server, with token estimates.",
+        operationId: "mcp.tools",
+        responses: {
+          200: {
+            description: "MCP tools grouped by server",
+            content: {
+              "application/json": {
+                schema: resolver(
+                  z.record(
+                    z.string(),
+                    z.array(
+                      z.object({
+                        name: z.string(),
+                        key: z.string(),
+                        description: z.string(),
+                        tokenEstimate: z.number(),
+                      }),
+                    ),
+                  ),
+                ),
+              },
+            },
+          },
+        },
+      }),
+      async (c) =>
+        jsonRequest("McpRoutes.tools", c, function* () {
+          const mcp = yield* MCP.Service
+          const raw = yield* mcp.defs()
+          const sanitize = (s: string) => s.replace(/[^a-zA-Z0-9_-]/g, "_")
+          const result: Record<string, { name: string; key: string; description: string; tokenEstimate: number }[]> = {}
+          for (const [server, tools] of Object.entries(raw)) {
+            result[server] = tools.map((t) => ({
+              name: t.name,
+              key: sanitize(server) + "_" + sanitize(t.name),
+              description: t.description ?? "",
+              tokenEstimate: Math.ceil(
+                JSON.stringify({ name: t.name, description: t.description, inputSchema: t.inputSchema }).length / 3.5,
+              ),
+            }))
+          }
+          return result
+        }),
     ),
 )

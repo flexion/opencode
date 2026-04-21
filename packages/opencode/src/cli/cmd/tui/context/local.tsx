@@ -1,6 +1,6 @@
 import { createStore } from "solid-js/store"
 import { createSimpleContext } from "./helper"
-import { batch, createEffect, createMemo } from "solid-js"
+import { batch, createEffect, createMemo, createSignal } from "solid-js"
 import { useSync } from "@tui/context/sync"
 import { useTheme } from "@tui/context/theme"
 import { uniqueBy } from "remeda"
@@ -397,6 +397,35 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       },
     }
 
+    const [toolFilter, setToolFilter] = createSignal<string[] | "all">("all")
+    const [pendingPrompt, setPendingPrompt] = createSignal<string | null>(null)
+    const [showSessionToolsDialog, setShowSessionToolsDialog] = createSignal(false)
+    let resumeFn: (() => void) | null = null
+
+    const sessionTools = {
+      filter: toolFilter,
+      pending: pendingPrompt,
+      set(filter: string[] | "all") {
+        setToolFilter(filter)
+      },
+      setPending(text: string | null) {
+        setPendingPrompt(text)
+      },
+      setResume(fn: () => void) {
+        resumeFn = fn
+      },
+      callResume() {
+        const fn = resumeFn
+        resumeFn = null
+        fn?.()
+      },
+      reset() {
+        setToolFilter("all")
+        setPendingPrompt(null)
+        resumeFn = null
+      },
+    }
+
     // Automatically update model when agent changes
     createEffect(() => {
       const value = agent.current()
@@ -420,6 +449,9 @@ export const { use: useLocal, provider: LocalProvider } = createSimpleContext({
       model,
       agent,
       mcp,
+      sessionTools,
+      showSessionToolsDialog,
+      setShowSessionToolsDialog,
     }
     return result
   },

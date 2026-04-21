@@ -41,6 +41,7 @@ import { useTextareaKeybindings } from "../textarea-keybindings"
 import { DialogSkill } from "../dialog-skill"
 import { DialogWorkspaceCreate, restoreWorkspaceSession } from "../dialog-workspace-create"
 import { DialogWorkspaceUnavailable } from "../dialog-workspace-unavailable"
+import { DialogSessionTools } from "../dialog-session-tools"
 import { useArgs } from "@tui/context/args"
 
 export type PromptProps = {
@@ -680,6 +681,28 @@ export function Prompt(props: PromptProps) {
 
     let sessionID = props.sessionID
     if (sessionID == null) {
+      // Intercept on first message: show tool selection dialog if any MCP servers are connected
+      // and the dialog hasn't been shown yet for this session (pending === null).
+      const hasMcp = Object.values(sync.data.mcp ?? {}).some((s) => s.status === "connected")
+      if (hasMcp && local.sessionTools.pending() === null) {
+        local.sessionTools.setPending(store.prompt.input)
+        local.sessionTools.setResume(() => submit())
+        dialog.replace(() => (
+          <DialogSessionTools
+            onConfirm={(filter) => {
+              local.sessionTools.set(filter)
+              dialog.clear()
+              local.sessionTools.callResume()
+            }}
+            onDismiss={() => {
+              dialog.clear()
+              local.sessionTools.callResume()
+            }}
+          />
+        ))
+        return false
+      }
+
       const res = await sdk.client.session.create({ workspace: props.workspaceID })
 
       if (res.error) {
@@ -694,6 +717,23 @@ export function Prompt(props: PromptProps) {
       }
 
       sessionID = res.data.id
+
+      // Apply tool filter: write deny rules for unselected tools onto the session permission
+      const filter = local.sessionTools.filter()
+      if (Array.isArray(filter)) {
+        const toolsRes = await sdk.client.mcp.tools()
+        if (toolsRes.data) {
+          const allKeys = Object.values(toolsRes.data).flatMap((list) => list.map((t) => t.key))
+          const deny = allKeys
+            .filter((k) => !filter.includes(k))
+            .map((k) => ({ permission: k, pattern: "*", action: "deny" as const }))
+          if (deny.length > 0) {
+            await sdk.client.session.update({ sessionID, permission: deny })
+          }
+        }
+      }
+
+      local.sessionTools.reset()
     }
 
     const messageID = MessageID.ascending()
