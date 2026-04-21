@@ -45,7 +45,7 @@ Verify the build:
 Add to `~/.aws/config`:
 
 ```ini
-[profile AdministratorAccess]
+[profile ClaudeCodeAccess]
 sso_start_url = <your-sso-start-url>
 sso_region = <your-sso-region>
 sso_account_id = <your-account-id>
@@ -122,23 +122,7 @@ Add to `~/.zshrc` or `~/.bashrc`:
 
 ```bash
 opencode-work() {
-  local profile="AdministratorAccess"
-  local opencode_args=()
-
-  # If first arg looks like a session ID, convert it to -s <session_id>
-  if [[ -n "$1" && "$1" != -* ]]; then
-    opencode_args=(-s "$1")
-    shift
-  fi
-  opencode_args+=("$@")
-
-  # Check if existing env credentials are still valid
-  if [[ -n "$AWS_ACCESS_KEY_ID" ]] && aws sts get-caller-identity &>/dev/null; then
-    echo "Using existing AWS credentials"
-    /path/to/opencode/packages/opencode/dist/opencode-darwin-arm64/bin/opencode "${opencode_args[@]}"
-    return
-  fi
-
+  local profile="ClaudeCodeAccess"
   echo "Logging in to AWS SSO ($profile)..."
   aws sso login --profile "$profile" || return 1
   eval "$(aws configure export-credentials --profile "$profile" --format env)"
