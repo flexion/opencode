@@ -123,10 +123,26 @@ Add to `~/.zshrc` or `~/.bashrc`:
 ```bash
 opencode-work() {
   local profile="AdministratorAccess"
+  local opencode_args=()
+
+  # If first arg looks like a session ID, convert it to -s <session_id>
+  if [[ -n "$1" && "$1" != -* ]]; then
+    opencode_args=(-s "$1")
+    shift
+  fi
+  opencode_args+=("$@")
+
+  # Check if existing env credentials are still valid
+  if [[ -n "$AWS_ACCESS_KEY_ID" ]] && aws sts get-caller-identity &>/dev/null; then
+    echo "Using existing AWS credentials"
+    /path/to/opencode/packages/opencode/dist/opencode-darwin-arm64/bin/opencode "${opencode_args[@]}"
+    return
+  fi
+
   echo "Logging in to AWS SSO ($profile)..."
   aws sso login --profile "$profile" || return 1
   eval "$(aws configure export-credentials --profile "$profile" --format env)"
-  /path/to/opencode/packages/opencode/dist/opencode-darwin-arm64/bin/opencode "$@"
+  /path/to/opencode/packages/opencode/dist/opencode-darwin-arm64/bin/opencode "${opencode_args[@]}"
 }
 ```
 
@@ -137,6 +153,9 @@ Replace `/path/to/opencode` with where you cloned the repo (e.g. `~/Code/persona
 ```bash
 # Login and launch
 opencode-work
+
+# Resume a previous session
+opencode-work ses_2541da06dffeSyfI3ed4qvC7Tv
 
 # Re-running after SSO session expires — just run again, it will re-authenticate
 opencode-work
