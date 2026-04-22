@@ -25,6 +25,7 @@ Fix issues in layers as they surfaced during CI runs:
 - 2026-04-22: CI round 3 — 7 test timeouts; root-caused to `@npmcli/arborist.reify()` in tests
 - 2026-04-22: CI round 4 — 1 remaining timeout; fixed shell-loop test 3s → 15s
 - 2026-04-22: All CI jobs passing. PR updated.
+- 2026-04-22: CI round 5 — 1 new timeout; "shell rejects with BusyError when loop running" 3s → 15s
 
 ## Key Decisions
 
@@ -56,6 +57,8 @@ Both now installed in a single `Ensure build tools are available` step in
   (280 files + multiple git commits/patches/reverts on ARM64)
 - `prompt-effect.test.ts` "loop waits while shell runs": 3 s → 15 s
   (spawns a real `sleep 0.2` subprocess; ARM64 fork/exec overhead exceeds 3 s)
+- `prompt-effect.test.ts` "shell rejects with BusyError when loop running": 3 s → 15 s
+  (fiber fork + session init before `llm.wait(1)` exceeds 3 s on ARM64)
 
 ## Files Changed
 - `install-flex` — `OPENCODE_CHANNEL=flex` added to build command
