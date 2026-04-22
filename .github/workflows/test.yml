@@ -63,6 +63,24 @@ jobs:
             turbo-${{ runner.os }}-${{ hashFiles('turbo.json', '**/package.json') }}-
             turbo-${{ runner.os }}-
 
+      - name: Cache npm registry packages
+        # Plugin integration tests install @opencode-ai/plugin into fresh temp dirs
+        # using @npmcli/arborist, which fetches from the npm registry and caches
+        # tarballs in ~/.npm. Without this cache, each test does a full network
+        # download, easily hitting the 30 s bun test timeout on Blacksmith ARM64.
+        uses: actions/cache@v4
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ runner.arch }}-opencode-ai-plugin-${{ hashFiles('**/package.json') }}
+          restore-keys: |
+            npm-${{ runner.os }}-${{ runner.arch }}-opencode-ai-plugin-
+
+      - name: Warm npm cache for @opencode-ai/plugin
+        # Pre-populate ~/.npm so arborist can satisfy @opencode-ai/plugin from
+        # cache during plugin integration tests instead of hitting the registry.
+        if: runner.os == 'Linux'
+        run: npm install --prefix /tmp/plugin-warmup @opencode-ai/plugin
+
       - name: Run unit tests
         run: bun turbo test:ci
         env:
