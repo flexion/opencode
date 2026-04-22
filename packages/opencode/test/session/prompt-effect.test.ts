@@ -626,7 +626,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  5_000,
+  15_000, // subprocess startup on Blacksmith ARM64 can consume 2-3 s; 15 s gives enough headroom
 )
 
 it.live(
