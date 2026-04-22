@@ -1024,7 +1024,7 @@ it.live(
       }),
       { git: true, config: providerCfg },
     ),
-  3_000,
+  15_000, // fiber fork + session init on Blacksmith ARM64 can exceed 3 s; 15 s gives enough headroom
 )
 
 unix("shell captures stdout and stderr in completed tool output", () =>
