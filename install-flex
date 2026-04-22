@@ -1,0 +1,258 @@
+#!/usr/bin/env bash
+# install-flex — Flexion fork of opencode, automated installer
+#
+# Usage:
+#   curl -fsSL https://raw.githubusercontent.com/flexion/opencode/flex/install-flex | bash
+#
+# What this does:
+#   1. Checks prerequisites (git, bun, aws-cli v2)
+#   2. Prompts: clone directory, AWS account ID, preferred AWS region
+#   3. Clones git@github.com:flexion/opencode.git (flex branch) — skipped if already present
+#   4. Installs dependencies and builds the native binary
+#   5. Writes [profile ClaudeCodeAccess] to ~/.aws/config
+#   6. Writes ~/.config/opencode/opencode.json (Bedrock + model config)
+#   7. Appends opencode-work() launcher function to ~/.zshrc or ~/.bashrc
+#
+# Existing files are never overwritten; each step is skipped with a warning
+# if the output already exists.
+
+set -euo pipefail
+
+# ── colors ────────────────────────────────────────────────────────────────────
+if [ -t 1 ]; then
+  BOLD=$'\033[1m'; GREEN=$'\033[0;32m'; YELLOW=$'\033[1;33m'
+  BLUE=$'\033[0;34m'; RED=$'\033[0;31m'; NC=$'\033[0m'
+else
+  BOLD=''; GREEN=''; YELLOW=''; BLUE=''; RED=''; NC=''
+fi
+
+# ── constants ─────────────────────────────────────────────────────────────────
+SSO_START_URL="https://identitycenter.amazonaws.com/ssoins-6684680a9b285ea2"
+SSO_REGION="us-east-2"
+SSO_ROLE_NAME="ClaudeCodeAccess"
+AWS_PROFILE="ClaudeCodeAccess"
+REPO_URL="git@github.com:flexion/opencode.git"
+BRANCH="flex"
+
+# ── helpers ───────────────────────────────────────────────────────────────────
+info()    { printf '%s▶%s %s\n' "$BLUE"   "$NC" "$*"; }
+success() { printf '%s✔%s %s\n' "$GREEN"  "$NC" "$*"; }
+warn()    { printf '%s⚠%s %s\n' "$YELLOW" "$NC" "$*"; }
+die()     { printf '%s✖%s %s\n' "$RED"    "$NC" "$*" >&2; exit 1; }
+
+# ── step 1: prerequisites ─────────────────────────────────────────────────────
+check_prereqs() {
+  info "Checking prerequisites..."
+  local missing=()
+  command -v git >/dev/null 2>&1 || missing+=("git")
+  command -v bun >/dev/null 2>&1 || missing+=("bun  (https://bun.sh)")
+  command -v aws >/dev/null 2>&1 || missing+=("aws-cli v2  (https://aws.amazon.com/cli/)")
+  if [ ${#missing[@]} -gt 0 ]; then
+    die "Missing prerequisites:$(printf '\n  • %s' "${missing[@]}")"
+  fi
+  success "Prerequisites OK"
+}
+
+# ── step 2: gather inputs ─────────────────────────────────────────────────────
+# All reads use /dev/tty so prompts work when stdin is the script (curl | bash).
+gather_inputs() {
+  printf '\n%sFlexion opencode installer%s\n' "$BOLD" "$NC"
+  printf '────────────────────────────────────────────\n'
+
+  printf 'Clone directory [%s]: ' "$HOME/opencode" >/dev/tty
+  IFS= read -r CLONE_DIR </dev/tty
+  CLONE_DIR="${CLONE_DIR:-$HOME/opencode}"
+
+  while true; do
+    printf 'AWS account ID: ' >/dev/tty
+    IFS= read -r ACCOUNT_ID </dev/tty
+    [ -n "${ACCOUNT_ID:-}" ] && break
+    warn "AWS account ID is required."
+  done
+
+  printf 'Preferred AWS region [us-east-1]: ' >/dev/tty
+  IFS= read -r AWS_REGION </dev/tty
+  AWS_REGION="${AWS_REGION:-us-east-1}"
+  echo
+}
+
+# ── step 3: clone & build ─────────────────────────────────────────────────────
+clone_and_build() {
+  if [ -d "$CLONE_DIR/.git" ]; then
+    warn "Directory $CLONE_DIR already exists — skipping clone"
+    info "Fetching and checking out $BRANCH branch..."
+    git -C "$CLONE_DIR" fetch origin
+    git -C "$CLONE_DIR" checkout "$BRANCH"
+  else
+    info "Cloning $REPO_URL → $CLONE_DIR ..."
+    git clone --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
+  fi
+
+  info "Installing dependencies..."
+  # BUN_CONFIG_REGISTRY override prevents private registry redirects (e.g. CMS Artifactory)
+  # from breaking public package resolution.
+  (cd "$CLONE_DIR" && BUN_CONFIG_REGISTRY=https://registry.npmjs.org bun install)
+
+  info "Building opencode binary (this takes about a minute)..."
+  BUN_CONFIG_REGISTRY=https://registry.npmjs.org \
+    bun run --cwd "$CLONE_DIR/packages/opencode" build --single --skip-embed-web-ui
+
+  success "Binary built"
+}
+
+# ── step 4: AWS SSO config ────────────────────────────────────────────────────
+write_aws_config() {
+  mkdir -p "$HOME/.aws"
+  local config="$HOME/.aws/config"
+
+  if grep -q "\[profile $AWS_PROFILE\]" "$config" 2>/dev/null; then
+    warn "AWS profile [$AWS_PROFILE] already in $config — skipping"
+    return
+  fi
+
+  info "Writing AWS SSO profile to $config..."
+  cat >>"$config" <<EOF
+
+[profile $AWS_PROFILE]
+sso_start_url = $SSO_START_URL
+sso_region    = $SSO_REGION
+sso_account_id = $ACCOUNT_ID
+sso_role_name  = $SSO_ROLE_NAME
+region         = $AWS_REGION
+EOF
+  success "AWS profile [$AWS_PROFILE] written"
+}
+
+# ── step 5: opencode provider config ─────────────────────────────────────────
+write_opencode_config() {
+  local config_dir="$HOME/.config/opencode"
+  local config_file="$config_dir/opencode.json"
+  mkdir -p "$config_dir"
+
+  if [ -f "$config_file" ]; then
+    warn "opencode config already exists at $config_file — skipping"
+    return
+  fi
+
+  info "Writing opencode config to $config_file..."
+  cat >"$config_file" <<EOF
+{
+  "\$schema": "https://opencode.ai/config.json",
+  "model": "amazon-bedrock/us.anthropic.claude-sonnet-4-6",
+  "enabled_providers": ["amazon-bedrock"],
+  "plugin": [],
+  "provider": {
+    "amazon-bedrock": {
+      "options": {
+        "region": "$AWS_REGION"
+      },
+      "models": {
+        "writer.palmyra-x4-v1:0": {
+          "name": "Writer Palmyra X4",
+          "tool_call": false,
+          "limit": { "context": 128000, "output": 8192 }
+        },
+        "writer.palmyra-x5-v1:0": {
+          "name": "Writer Palmyra X5",
+          "tool_call": false,
+          "limit": { "context": 1000000, "output": 8192 }
+        },
+        "deepseek.r1-v1:0": {
+          "name": "DeepSeek R1 (A)",
+          "tool_call": false,
+          "reasoning": false,
+          "limit": { "context": 64000, "output": 32768 }
+        },
+        "mistral.pixtral-large-2502-v1:0": {
+          "name": "Mistral Pixtral Large",
+          "tool_call": false,
+          "limit": { "context": 128000, "output": 8192 }
+        },
+        "meta.llama4-maverick-17b-instruct-v1:0": {
+          "name": "Meta Llama 4 Maverick 17B",
+          "tool_call": false,
+          "limit": { "context": 1000000, "output": 8192 }
+        },
+        "meta.llama4-scout-17b-instruct-v1:0": {
+          "name": "Meta Llama 4 Scout 17B",
+          "tool_call": false,
+          "limit": { "context": 10000000, "output": 8192 }
+        },
+        "amazon.nova-2-lite-v1:0": {
+          "name": "Amazon Nova 2 Lite",
+          "limit": { "context": 300000, "output": 5120 }
+        }
+      }
+    }
+  }
+}
+EOF
+  success "opencode config written"
+}
+
+# ── step 6: shell launcher function ──────────────────────────────────────────
+write_shell_alias() {
+  local rc_file
+  case "$(basename "${SHELL:-bash}")" in
+    zsh) rc_file="$HOME/.zshrc" ;;
+    *)   rc_file="$HOME/.bashrc" ;;
+  esac
+
+  if grep -q "opencode-work()" "$rc_file" 2>/dev/null; then
+    warn "opencode-work() already defined in $rc_file — skipping"
+    return
+  fi
+
+  info "Appending opencode-work() to $rc_file..."
+
+  # Single-quoted heredoc prevents variable expansion inside the function body.
+  # CLONE_DIR_PLACEHOLDER is substituted after writing via perl.
+  cat >>"$rc_file" <<'SHELL_EOF'
+
+# ── Flexion opencode launcher ─────────────────────────────────────────────────
+opencode-work() {
+  local profile="ClaudeCodeAccess"
+  local arch os
+  case "$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="x64" ;; esac
+  case "$(uname -s)" in Darwin) os="darwin" ;; Linux) os="linux" ;; *)
+    echo "Unsupported OS: $(uname -s)" && return 1 ;; esac
+  echo "Logging in to AWS SSO ($profile)..."
+  aws sso login --profile "$profile" || return 1
+  eval "$(aws configure export-credentials --profile "$profile" --format env)"
+  "CLONE_DIR_PLACEHOLDER/packages/opencode/dist/opencode-${os}-${arch}/bin/opencode" "$@"
+}
+# ─────────────────────────────────────────────────────────────────────────────
+SHELL_EOF
+
+  # Substitute actual clone path. Uses | as delimiter to safely handle / in paths.
+  perl -i -pe "s|CLONE_DIR_PLACEHOLDER|${CLONE_DIR}|g" "$rc_file"
+
+  success "opencode-work() added to $rc_file"
+}
+
+# ── main ──────────────────────────────────────────────────────────────────────
+main() {
+  check_prereqs
+  gather_inputs
+  clone_and_build
+  write_aws_config
+  write_opencode_config
+  write_shell_alias
+
+  local rc_file
+  case "$(basename "${SHELL:-bash}")" in
+    zsh) rc_file="~/.zshrc" ;;
+    *)   rc_file="~/.bashrc" ;;
+  esac
+
+  printf '\n%s%sInstallation complete!%s\n' "$GREEN" "$BOLD" "$NC"
+  printf '────────────────────────────────────────────\n'
+  printf '  Binary:   %s/packages/opencode/dist/opencode-*/bin/opencode\n' "$CLONE_DIR"
+  printf '  AWS:      profile=%s  account=%s  region=%s\n' "$AWS_PROFILE" "$ACCOUNT_ID" "$AWS_REGION"
+  printf '  Config:   %s/.config/opencode/opencode.json\n' "$HOME"
+  printf '\n  Next steps:\n'
+  printf '    1. source %s\n' "$rc_file"
+  printf '    2. opencode-work\n\n'
+}
+
+main
