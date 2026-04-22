@@ -94,7 +94,11 @@ clone_and_build() {
   (cd "$CLONE_DIR" && BUN_CONFIG_REGISTRY=https://registry.npmjs.org bun install)
 
   info "Building opencode binary (this takes about a minute)..."
-  BUN_CONFIG_REGISTRY=https://registry.npmjs.org \
+  # OPENCODE_CHANNEL=flex ensures every Flexion fork build — regardless of which git
+  # branch is checked out — bakes "flex" into the binary as the installation channel.
+  # This means all Flexion builds share a single ~/.local/share/opencode/opencode-flex.db
+  # instead of creating a new, empty database per branch (e.g. opencode-chore-bolster-install.db).
+  BUN_CONFIG_REGISTRY=https://registry.npmjs.org OPENCODE_CHANNEL=flex \
     bun run --cwd "$CLONE_DIR/packages/opencode" build --single --skip-embed-web-ui
 
   success "Binary built"
