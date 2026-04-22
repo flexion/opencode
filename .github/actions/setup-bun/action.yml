@@ -3,12 +3,19 @@ description: "Setup Bun with caching and install dependencies"
 runs:
   using: "composite"
   steps:
-    - name: Ensure unzip is available
+    - name: Ensure build tools are available
       if: runner.os == 'Linux'
       shell: bash
-      # oven-sh/setup-bun extracts the downloaded zip via the system `unzip` command
-      # on Linux. Blacksmith's ARM64 ubuntu-2404 runners don't pre-install it.
-      run: command -v unzip >/dev/null 2>&1 || sudo apt-get install -y --no-install-recommends unzip
+      # Blacksmith's ARM64 ubuntu-2404 runners ship a minimal image that is missing:
+      #   unzip        — needed by oven-sh/setup-bun to extract the downloaded bun zip
+      #   build-essential (make, g++) — needed by node-gyp to compile native addons
+      #                  (e.g. tree-sitter-powershell) during `bun install`
+      run: |
+        PKGS=()
+        command -v unzip >/dev/null 2>&1 || PKGS+=(unzip)
+        command -v make  >/dev/null 2>&1 || PKGS+=(build-essential)
+        [ ${#PKGS[@]} -gt 0 ] && sudo apt-get install -y --no-install-recommends "${PKGS[@]}"
+        true
 
     - name: Get bun download URL
       id: bun-url
