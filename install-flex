@@ -46,7 +46,12 @@ check_prereqs() {
   local missing=()
   command -v git >/dev/null 2>&1 || missing+=("git")
   command -v bun >/dev/null 2>&1 || missing+=("bun  (https://bun.sh)")
-  command -v aws >/dev/null 2>&1 || missing+=("aws-cli v2  (https://aws.amazon.com/cli/)")
+  if command -v aws >/dev/null 2>&1; then
+    aws --version 2>&1 | grep -q '^aws-cli/2\.' \
+      || missing+=("aws-cli v2  (found v1 — upgrade: https://aws.amazon.com/cli/)")
+  else
+    missing+=("aws-cli v2  (https://aws.amazon.com/cli/)")
+  fi
   if [ ${#missing[@]} -gt 0 ]; then
     die "Missing prerequisites:$(printf '\n  • %s' "${missing[@]}")"
   fi
@@ -62,17 +67,29 @@ gather_inputs() {
   printf 'Clone directory [%s]: ' "$HOME/opencode" >/dev/tty
   IFS= read -r CLONE_DIR </dev/tty
   CLONE_DIR="${CLONE_DIR:-$HOME/opencode}"
+  # Expand leading ~ to $HOME before validation and use
+  CLONE_DIR="${CLONE_DIR/#\~/$HOME}"
+  # Reject shell metacharacters that could corrupt the rc file
+  case "$CLONE_DIR" in
+    *['|;&$`<>(){}!^*?\\']*)
+      die "Invalid clone directory — shell metacharacters are not allowed" ;;
+  esac
 
   while true; do
     printf 'AWS account ID: ' >/dev/tty
     IFS= read -r ACCOUNT_ID </dev/tty
-    [ -n "${ACCOUNT_ID:-}" ] && break
-    warn "AWS account ID is required."
+    [ -n "${ACCOUNT_ID:-}" ] || { warn "AWS account ID is required."; continue; }
+    # AWS account IDs are exactly 12 digits
+    [[ "$ACCOUNT_ID" =~ ^[0-9]{12}$ ]] || { warn "AWS account ID must be exactly 12 digits."; continue; }
+    break
   done
 
   printf 'Preferred AWS region [us-east-1]: ' >/dev/tty
   IFS= read -r AWS_REGION </dev/tty
   AWS_REGION="${AWS_REGION:-us-east-1}"
+  # AWS regions match the pattern: two-or-more-letters, dash, letters, dash, digit(s)
+  [[ "$AWS_REGION" =~ ^[a-z]{2,}-[a-z]+-[0-9]+$ ]] \
+    || die "Invalid AWS region format (expected e.g. us-east-1, eu-west-2)"
   echo
 }
 
@@ -80,18 +97,28 @@ gather_inputs() {
 clone_and_build() {
   if [ -d "$CLONE_DIR/.git" ]; then
     warn "Directory $CLONE_DIR already exists — skipping clone"
-    info "Fetching and checking out $BRANCH branch..."
+    # Refuse to proceed over uncommitted changes to avoid silent data loss.
+    if ! git -C "$CLONE_DIR" diff --quiet || ! git -C "$CLONE_DIR" diff --cached --quiet; then
+      die "$CLONE_DIR has uncommitted changes — commit or stash them and re-run"
+    fi
+    local current
+    current=$(git -C "$CLONE_DIR" rev-parse --abbrev-ref HEAD)
+    if [ "$current" != "$BRANCH" ]; then
+      die "$CLONE_DIR is on branch '$current', not '$BRANCH' — switch manually and re-run"
+    fi
+    info "Fetching latest $BRANCH branch..."
     git -C "$CLONE_DIR" fetch origin
-    git -C "$CLONE_DIR" checkout "$BRANCH"
+    git -C "$CLONE_DIR" merge --ff-only "origin/$BRANCH"
   else
     info "Cloning $REPO_URL → $CLONE_DIR ..."
-    git clone --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
+    git clone --depth 1 --branch "$BRANCH" "$REPO_URL" "$CLONE_DIR"
   fi
 
   info "Installing dependencies..."
   # BUN_CONFIG_REGISTRY override prevents private registry redirects (e.g. CMS Artifactory)
   # from breaking public package resolution.
-  (cd "$CLONE_DIR" && BUN_CONFIG_REGISTRY=https://registry.npmjs.org bun install)
+  # --frozen-lockfile ensures bun.lock is respected and no unexpected version upgrades occur.
+  (cd "$CLONE_DIR" && BUN_CONFIG_REGISTRY=https://registry.npmjs.org bun install --frozen-lockfile)
 
   info "Building opencode binary (this takes about a minute)..."
   # OPENCODE_CHANNEL=flex ensures every Flexion fork build — regardless of which git
@@ -107,23 +134,20 @@ clone_and_build() {
 # ── step 4: AWS SSO config ────────────────────────────────────────────────────
 write_aws_config() {
   mkdir -p "$HOME/.aws"
-  local config="$HOME/.aws/config"
-
-  if grep -q "\[profile $AWS_PROFILE\]" "$config" 2>/dev/null; then
-    warn "AWS profile [$AWS_PROFILE] already in $config — skipping"
+  # Use aws configure set for atomic, structured writes — avoids raw cat >> which can
+  # corrupt ~/.aws/config if a concurrent write leaves an unterminated section header.
+  # aws configure get doubles as an idempotency check without relying on fragile grep.
+  if aws configure get sso_start_url --profile "$AWS_PROFILE" >/dev/null 2>&1; then
+    warn "AWS profile [$AWS_PROFILE] already configured — skipping"
     return
   fi
 
-  info "Writing AWS SSO profile to $config..."
-  cat >>"$config" <<EOF
-
-[profile $AWS_PROFILE]
-sso_start_url = $SSO_START_URL
-sso_region    = $SSO_REGION
-sso_account_id = $ACCOUNT_ID
-sso_role_name  = $SSO_ROLE_NAME
-region         = $AWS_REGION
-EOF
+  info "Writing AWS SSO profile via aws configure set..."
+  aws configure set sso_start_url  "$SSO_START_URL"  --profile "$AWS_PROFILE"
+  aws configure set sso_region     "$SSO_REGION"     --profile "$AWS_PROFILE"
+  aws configure set sso_account_id "$ACCOUNT_ID"     --profile "$AWS_PROFILE"
+  aws configure set sso_role_name  "$SSO_ROLE_NAME"  --profile "$AWS_PROFILE"
+  aws configure set region         "$AWS_REGION"     --profile "$AWS_PROFILE"
   success "AWS profile [$AWS_PROFILE] written"
 }
 
@@ -202,34 +226,45 @@ write_shell_alias() {
     *)   rc_file="$HOME/.bashrc" ;;
   esac
 
-  if grep -q "opencode-work()" "$rc_file" 2>/dev/null; then
+  # Sentinel comment is the idempotency guard — more reliable than matching the
+  # function signature, which a user might remove while leaving a stale comment.
+  if grep -qF "── Flexion opencode launcher ──" "$rc_file" 2>/dev/null; then
     warn "opencode-work() already defined in $rc_file — skipping"
     return
   fi
 
   info "Appending opencode-work() to $rc_file..."
 
-  # Single-quoted heredoc prevents variable expansion inside the function body.
-  # CLONE_DIR_PLACEHOLDER is substituted after writing via perl.
-  cat >>"$rc_file" <<'SHELL_EOF'
+  # Use printf %q to shell-quote the clone path at install time.
+  # This eliminates the previous Perl s|...|..| substitution which was vulnerable
+  # to injection if CLONE_DIR contained a | character.
+  local clone_dir_q
+  clone_dir_q=$(printf '%q' "$CLONE_DIR")
+
+  # Double-quoted heredoc: $clone_dir_q expands now (install time);
+  # all other $ references are \-escaped so they expand at shell run time.
+  cat >>"$rc_file" <<SHELL_EOF
 
 # ── Flexion opencode launcher ─────────────────────────────────────────────────
 opencode-work() {
   local profile="ClaudeCodeAccess"
+  local clone_dir=$clone_dir_q
   local arch os
-  case "$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="x64" ;; esac
-  case "$(uname -s)" in Darwin) os="darwin" ;; Linux) os="linux" ;; *)
-    echo "Unsupported OS: $(uname -s)" && return 1 ;; esac
-  echo "Logging in to AWS SSO ($profile)..."
-  aws sso login --profile "$profile" || return 1
-  eval "$(aws configure export-credentials --profile "$profile" --format env)"
-  "CLONE_DIR_PLACEHOLDER/packages/opencode/dist/opencode-${os}-${arch}/bin/opencode" "$@"
+  case "\$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="x64" ;; esac
+  case "\$(uname -s)" in Darwin) os="darwin" ;; Linux) os="linux" ;; *)
+    echo "Unsupported OS: \$(uname -s)" && return 1 ;; esac
+  echo "Logging in to AWS SSO (\$profile)..."
+  aws sso login --profile "\$profile" || return 1
+  # Subshell confines exported credentials to the opencode process — they do not
+  # persist in the interactive shell environment after opencode exits.
+  (
+    eval "\$(aws configure export-credentials --profile "\$profile" --format env)"
+    export AWS_ACCESS_KEY_ID AWS_SECRET_ACCESS_KEY AWS_SESSION_TOKEN
+    "\${clone_dir}/packages/opencode/dist/opencode-\${os}-\${arch}/bin/opencode" "\$@"
+  )
 }
 # ─────────────────────────────────────────────────────────────────────────────
 SHELL_EOF
-
-  # Substitute actual clone path. Uses | as delimiter to safely handle / in paths.
-  perl -i -pe "s|CLONE_DIR_PLACEHOLDER|${CLONE_DIR}|g" "$rc_file"
 
   success "opencode-work() added to $rc_file"
 }
