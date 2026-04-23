@@ -1528,4 +1528,4 @@ test("revert handles large mixed batches across chunk boundaries", async () => {
       )
     },
   })
-})
+}, 60_000) // 280 files + multiple git operations can exceed 30 s on slower ARM64 CI runners

@@ -44,6 +44,12 @@ export const Flag = {
   OPENCODE_DISABLE_AUTOCOMPACT: truthy("OPENCODE_DISABLE_AUTOCOMPACT"),
   OPENCODE_DISABLE_MODELS_FETCH: truthy("OPENCODE_DISABLE_MODELS_FETCH"),
   OPENCODE_DISABLE_MOUSE: truthy("OPENCODE_DISABLE_MOUSE"),
+  // Skip the background @npmcli/arborist install of @opencode-ai/plugin into
+  // .opencode/ directories. In production this ensures the plugin SDK is
+  // available for user-authored plugins. In test environments bun resolves
+  // @opencode-ai/plugin from the workspace node_modules directly, so the
+  // install is unnecessary and causes test timeouts on slower CI runners.
+  OPENCODE_DISABLE_PLUGIN_DEPS_INSTALL: truthy("OPENCODE_DISABLE_PLUGIN_DEPS_INSTALL"),
   OPENCODE_DISABLE_CLAUDE_CODE,
   OPENCODE_DISABLE_CLAUDE_CODE_PROMPT: OPENCODE_DISABLE_CLAUDE_CODE || truthy("OPENCODE_DISABLE_CLAUDE_CODE_PROMPT"),
   OPENCODE_DISABLE_CLAUDE_CODE_SKILLS,

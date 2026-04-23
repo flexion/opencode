@@ -45,6 +45,12 @@ process.env["OPENCODE_TEST_HOME"] = testHome
 const testManagedConfigDir = path.join(dir, "managed")
 process.env["OPENCODE_TEST_MANAGED_CONFIG_DIR"] = testManagedConfigDir
 process.env["OPENCODE_DISABLE_DEFAULT_PLUGINS"] = "true"
+// Skip the background @npmcli/arborist install of @opencode-ai/plugin into
+// .opencode/ dirs. Tests don't need the runtime npm install because bun
+// resolves @opencode-ai/plugin from the monorepo workspace node_modules.
+// Without this, plugin/tool tests trigger a full npm network fetch per test,
+// consuming 10-30 s on Blacksmith ARM64 CI and causing timeouts.
+process.env["OPENCODE_DISABLE_PLUGIN_DEPS_INSTALL"] = "true"
 
 // Write the cache version file to prevent global/index.ts from clearing the cache
 const cacheDir = path.join(dir, "cache", "opencode")
