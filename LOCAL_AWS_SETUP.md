@@ -111,12 +111,12 @@ Create `~/.config/opencode/opencode.json`:
           "tool_call": false,
           "limit": { "context": 128000, "output": 8192 }
         },
-        "meta.llama4-maverick-17b-instruct-v1:0": {
+        "us.meta.llama4-maverick-17b-instruct-v1:0": {
           "name": "Meta Llama 4 Maverick 17B",
           "tool_call": false,
           "limit": { "context": 1000000, "output": 8192 }
         },
-        "meta.llama4-scout-17b-instruct-v1:0": {
+        "us.meta.llama4-scout-17b-instruct-v1:0": {
           "name": "Meta Llama 4 Scout 17B",
           "tool_call": false,
           "limit": { "context": 10000000, "output": 8192 }
