@@ -74,6 +74,10 @@ gather_inputs() {
     *['|;&$`<>(){}!^*?'\\]*)
       die "Invalid clone directory — shell metacharacters are not allowed" ;;
   esac
+  # Reject control characters (especially newlines)
+  if [[ "$CLONE_DIR" =~ [[:cntrl:]] ]]; then
+    die "Invalid clone directory — control characters are not allowed"
+  fi
 
   while true; do
     printf 'AWS account ID: ' >/dev/tty
@@ -215,6 +219,7 @@ write_opencode_config() {
   }
 }
 EOF
+  chmod 600 "$config_file"
   success "opencode config written"
 }
 
