@@ -31,13 +31,43 @@ https://github.com/anomalyco/models.dev
 
 ## Developing OpenCode
 
-- Requirements: Bun 1.3+
+- Requirements: Bun 1.3+, Python 3.10+ (for pre-commit hooks)
 - Install dependencies and start the dev server from the repo root:
 
   ```bash
   bun install
   bun dev
   ```
+
+### Setting Up Pre-Commit Hooks
+
+Pre-commit hooks automatically validate code before pushing. This includes:
+- Secret detection (GitLeaks)
+- GitHub Actions linting (actionlint, GHA pinning)
+- Standard checks (trailing whitespace, JSON/YAML validation, etc.)
+- `.env` file protection
+
+To install pre-commit:
+
+```bash
+pip install pre-commit
+# or with uv:
+uv pip install pre-commit
+```
+
+Then install the git hooks:
+
+```bash
+pre-commit install
+```
+
+This integrates pre-commit into the `pre-push` Husky hook. Hooks will run automatically when you push. To manually run:
+
+```bash
+pre-commit run --hook-stage push                      # Run all hooks
+pre-commit run --hook-stage push --files <file>       # Run on specific file
+pre-commit run gitleaks-docker --hook-stage push      # Run single hook
+```
 
 ### Running against a different directory
 

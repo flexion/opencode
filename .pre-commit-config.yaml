@@ -1,0 +1,43 @@
+# See https://pre-commit.com for more information
+# See https://pre-commit.com/hooks.html for more hooks
+repos:
+  # Standard pre-commit hooks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v6.0.0
+    hooks:
+      - id: trailing-whitespace
+      - id: end-of-file-fixer
+      - id: check-yaml
+      - id: check-json
+      - id: check-toml
+      - id: check-added-large-files
+        args: [ "--maxkb=1000" ]
+      - id: detect-aws-credentials
+        args: [ '--allow-missing-credentials' ]
+
+  # Detect secrets with GitLeaks
+  - repo: https://github.com/zricethezav/gitleaks
+    rev: v8.30.1
+    hooks:
+      - id: gitleaks-docker
+
+  # Lint GitHub Actions
+  - repo: https://github.com/rhysd/actionlint
+    rev: v1.7.10
+    hooks:
+      - id: actionlint-docker
+
+  - repo: https://github.com/lalten/check-gha-pinning
+    rev: v1.3.1
+    hooks:
+      - id: check-gha-pinning
+
+  # Block forbidden files (.env, etc.)
+  - repo: local
+    hooks:
+      - id: block-env-files
+        name: Block .env files
+        entry: scripts/block-env-files.sh
+        language: script
+        pass_filenames: false
+        always_run: true
