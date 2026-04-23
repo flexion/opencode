@@ -71,7 +71,7 @@ gather_inputs() {
   CLONE_DIR="${CLONE_DIR/#\~/$HOME}"
   # Reject shell metacharacters that could corrupt the rc file
   case "$CLONE_DIR" in
-    *['|;&$`<>(){}!^*?\\']*)
+    *['|;&$`<>(){}!^*?'\\]*)
       die "Invalid clone directory — shell metacharacters are not allowed" ;;
   esac
 
@@ -280,8 +280,8 @@ main() {
 
   local rc_file
   case "$(basename "${SHELL:-bash}")" in
-    zsh) rc_file="~/.zshrc" ;;
-    *)   rc_file="~/.bashrc" ;;
+    zsh) rc_file="$HOME/.zshrc" ;;
+    *)   rc_file="$HOME/.bashrc" ;;
   esac
 
   printf '\n%s%sInstallation complete!%s\n' "$GREEN" "$BOLD" "$NC"
