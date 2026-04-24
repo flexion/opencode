@@ -170,6 +170,7 @@ write_opencode_config() {
   cat >"$config_file" <<EOF
 {
   "\$schema": "https://opencode.ai/config.json",
+  "autoupdate": false,
   "model": "amazon-bedrock/us.anthropic.claude-sonnet-4-6",
   "enabled_providers": ["amazon-bedrock"],
   "plugin": [],
