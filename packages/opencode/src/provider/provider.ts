@@ -1393,7 +1393,7 @@ const layer: Layer.Layer<
               delete provider.models[modelID]
             if (model.status === "alpha" && !Flag.OPENCODE_ENABLE_EXPERIMENTAL_MODELS) delete provider.models[modelID]
             if (model.status === "deprecated") delete provider.models[modelID]
-            if (providerID === ProviderID.amazonBedrock && !BEDROCK_ALLOWED_MODELS.has(modelID))
+            if (providerID === ProviderID.amazonBedrock && !BEDROCK_ALLOWED_MODELS.has(modelID) && !configProvider?.models?.[modelID])
               delete provider.models[modelID]
             if (
               (configProvider?.blacklist && configProvider.blacklist.includes(modelID)) ||
