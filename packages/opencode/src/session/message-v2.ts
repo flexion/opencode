@@ -786,11 +786,15 @@ export const toModelMessagesEffect = Effect.fnUntraced(function* (
               ...(differentModel ? {} : { callProviderMetadata: providerMeta(part.metadata) }),
             })
         }
-        if (part.type === "reasoning") {
+        // Reasoning parts carry a provider-specific signature that is cryptographically
+        // bound to the model that generated them. They cannot be replayed to a different
+        // model — doing so causes Anthropic to return "thinking.signature: Field required".
+        // Skip them entirely when the historical message came from a different model.
+        if (part.type === "reasoning" && !differentModel) {
           assistantMessage.parts.push({
             type: "reasoning",
             text: part.text,
-            ...(differentModel ? {} : { providerMetadata: part.metadata }),
+            providerMetadata: part.metadata,
           })
         }
       }

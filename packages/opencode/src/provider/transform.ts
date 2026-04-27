@@ -81,6 +81,25 @@ function normalizeMessages(
       .filter((msg): msg is ModelMessage => msg !== undefined && msg.content !== "")
   }
 
+  // Strip reasoning parts that have no valid provider signature — they cannot be sent
+  // as thinking blocks to Anthropic without a signature and would cause a 400 error.
+  // This is a defence-in-depth guard; the primary prevention is in message-v2.ts where
+  // reasoning parts from a different model are skipped before reaching this point.
+  if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/amazon-bedrock") {
+    msgs = msgs
+      .map((msg) => {
+        if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+        const filtered = msg.content.filter((part) => {
+          if ((part as any).type !== "reasoning") return true
+          const opts = (part as any).providerOptions?.anthropic
+          return opts?.signature != null || opts?.redactedData != null
+        })
+        if (filtered.length === 0) return undefined
+        return { ...msg, content: filtered }
+      })
+      .filter((msg): msg is ModelMessage => msg !== undefined)
+  }
+
   if (model.api.id.includes("claude")) {
     const scrub = (id: string) => id.replace(/[^a-zA-Z0-9_-]/g, "_")
     msgs = msgs.map((msg) => {
