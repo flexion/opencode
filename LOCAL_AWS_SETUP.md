@@ -2,6 +2,27 @@
 
 Instructions for cloning, building, and running the Flexion fork of opencode with AWS Bedrock.
 
+## Quick Install
+
+The installer handles all steps below automatically:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/flexion/opencode/flex/install-flex | bash
+```
+
+You will be prompted for:
+- **Clone directory** (default: `~/opencode`)
+- **AWS account ID** (your personal Flexion account)
+- **Preferred AWS region** (default: `us-east-1`)
+
+Everything else — AWS SSO profile, opencode config, and the `opencode-work` shell function — is written automatically. Skip to [Usage](#4-usage) once the installer finishes.
+
+---
+
+## Manual Setup
+
+Follow these steps if you prefer to configure things yourself.
+
 ## Prerequisites
 
 - [Bun](https://bun.sh) v1.3+
@@ -46,11 +67,11 @@ Add to `~/.aws/config`:
 
 ```ini
 [profile ClaudeCodeAccess]
-sso_start_url = <your-sso-start-url>
-sso_region = <your-sso-region>
+sso_start_url  = https://identitycenter.amazonaws.com/ssoins-6684680a9b285ea2
+sso_region     = us-east-2
 sso_account_id = <your-account-id>
-sso_role_name = AdministratorAccess
-region = <your-preferred-region>
+sso_role_name  = ClaudeCodeAccess
+region         = <your-preferred-region>
 ```
 
 ### 2. Configure opencode for Bedrock
@@ -90,12 +111,12 @@ Create `~/.config/opencode/opencode.json`:
           "tool_call": false,
           "limit": { "context": 128000, "output": 8192 }
         },
-        "meta.llama4-maverick-17b-instruct-v1:0": {
+        "us.meta.llama4-maverick-17b-instruct-v1:0": {
           "name": "Meta Llama 4 Maverick 17B",
           "tool_call": false,
           "limit": { "context": 1000000, "output": 8192 }
         },
-        "meta.llama4-scout-17b-instruct-v1:0": {
+        "us.meta.llama4-scout-17b-instruct-v1:0": {
           "name": "Meta Llama 4 Scout 17B",
           "tool_call": false,
           "limit": { "context": 10000000, "output": 8192 }
@@ -118,19 +139,23 @@ Create `~/.config/opencode/opencode.json`:
 
 ### 3. Shell alias
 
-Add to `~/.zshrc` or `~/.bashrc`:
+Add to `~/.zshrc` or `~/.bashrc` (replace `~/opencode` with your actual clone path if different):
 
 ```bash
+# ── Flexion opencode launcher ─────────────────────────────────────────────────
 opencode-work() {
   local profile="ClaudeCodeAccess"
+  local arch os
+  case "$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="x64" ;; esac
+  case "$(uname -s)" in Darwin) os="darwin" ;; Linux) os="linux" ;; *)
+    echo "Unsupported OS: $(uname -s)" && return 1 ;; esac
   echo "Logging in to AWS SSO ($profile)..."
   aws sso login --profile "$profile" || return 1
   eval "$(aws configure export-credentials --profile "$profile" --format env)"
-  /path/to/opencode/packages/opencode/dist/opencode-darwin-arm64/bin/opencode "${opencode_args[@]}"
+  "$HOME/opencode/packages/opencode/dist/opencode-${os}-${arch}/bin/opencode" "$@"
 }
+# ─────────────────────────────────────────────────────────────────────────────
 ```
-
-Replace `/path/to/opencode` with where you cloned the repo (e.g. `~/Code/personal/flexion-work-items/flexchat-stack/opencode`).
 
 ### 4. Usage
 
@@ -174,6 +199,7 @@ See [flexion/opencode#2](https://github.com/flexion/opencode/pull/2) for the ful
 | Strip reasoning from history for non-reasoning models | `packages/opencode/src/provider/transform.ts` | Removes reasoning content parts from assistant message history before sending to models with `reasoning: false` — fixes Bedrock rejections when switching from a reasoning model |
 | Exclude palmyra from reasoning variant generation | `packages/opencode/src/provider/transform.ts` | Prevents unsupported `reasoningConfig` parameters from being sent to Writer Palmyra models |
 | Local build & AWS Bedrock setup docs | `LOCAL_AWS_SETUP.md` | This file |
+| Automated installer | `install-flex` | Single-command installer for the entire setup |
 
 Full details and upstream tracking: [flexion/opencode#2](https://github.com/flexion/opencode/pull/2)
 
