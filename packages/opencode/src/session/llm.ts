@@ -193,7 +193,15 @@ const live: Layer.Layer<
         },
       )
 
-      const canTool = input.model.capabilities.toolcall
+      // DeepSeek R1 (deepseek-reasoner) does not honour the `tools` parameter on the
+      // standard api.deepseek.com endpoint despite models.dev reporting tool_call: true.
+      // When tools are sent, R1 ignores the definitions and writes the invocation as
+      // markdown text inside its response — exactly the wrong behaviour. Disable tools
+      // for it so the model falls back to conversational output instead.
+      const isDeepSeekR1 =
+        input.model.providerID === "deepseek" &&
+        input.model.api.id.toLowerCase().includes("reasoner")
+      const canTool = input.model.capabilities.toolcall && !isDeepSeekR1
       const tools = canTool ? resolveTools(input) : {}
 
       // LiteLLM and some Anthropic proxies require the tools parameter to be present
