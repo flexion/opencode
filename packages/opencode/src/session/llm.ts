@@ -193,14 +193,19 @@ const live: Layer.Layer<
         },
       )
 
-      // DeepSeek R1 (deepseek-reasoner) does not honour the `tools` parameter on the
-      // standard api.deepseek.com endpoint despite models.dev reporting tool_call: true.
-      // When tools are sent, R1 ignores the definitions and writes the invocation as
-      // markdown text inside its response — exactly the wrong behaviour. Disable tools
-      // for it so the model falls back to conversational output instead.
+      // DeepSeek R1 does not honour the `tools` parameter regardless of which provider
+      // hosts it — neither the direct api.deepseek.com endpoint (model id: deepseek-reasoner,
+      // providerID: deepseek) nor the AWS Bedrock endpoint (model id: deepseek.r1-v1:0,
+      // providerID: amazon-bedrock) support function calling, even though models.dev
+      // incorrectly reports tool_call: true for both. When tools are sent, R1 ignores
+      // the definitions and writes the invocation as markdown text instead.
+      // Detect R1 via the provider-agnostic `family` field ("deepseek-thinking") which
+      // is set for all DeepSeek reasoning variants, or fall back to matching the known
+      // model IDs directly for cases where family is absent.
       const isDeepSeekR1 =
-        input.model.providerID === "deepseek" &&
-        input.model.api.id.toLowerCase().includes("reasoner")
+        input.model.family === "deepseek-thinking" ||
+        (input.model.providerID === "deepseek" && input.model.api.id.toLowerCase().includes("reasoner")) ||
+        input.model.api.id.toLowerCase().includes("deepseek.r1")
       const canTool = input.model.capabilities.toolcall && !isDeepSeekR1
       const tools = canTool ? resolveTools(input) : {}
 
