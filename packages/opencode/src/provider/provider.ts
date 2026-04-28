@@ -281,7 +281,8 @@ function custom(dep: CustomDep): Record<string, CustomLoader> {
       const awsBearerToken = iife(() => {
         const envToken = process.env.AWS_BEARER_TOKEN_BEDROCK
         if (envToken) return envToken
-        if (auth?.type === "api") {
+        // Only treat stored auth key as a bearer token when no IAM credentials exist.
+        if (auth?.type === "api" && !awsAccessKeyId && !profile) {
           process.env.AWS_BEARER_TOKEN_BEDROCK = auth.key
           return auth.key
         }
