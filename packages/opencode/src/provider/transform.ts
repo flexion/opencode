@@ -106,7 +106,12 @@ function normalizeMessages(
   // as thinking blocks to Anthropic without a signature and would cause a 400 error.
   // This is a defence-in-depth guard; the primary prevention is in message-v2.ts where
   // reasoning parts from a different model are skipped before reaching this point.
-  if (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/amazon-bedrock") {
+  // Only applies to reasoning-capable models: non-reasoning models don't produce signed
+  // thinking blocks, so their reasoning parts don't need a signature.
+  if (
+    model.capabilities.reasoning &&
+    (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/amazon-bedrock")
+  ) {
     msgs = msgs
       .map((msg) => {
         if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
