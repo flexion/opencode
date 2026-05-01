@@ -1,32 +1,22 @@
 # Local Build & AWS Bedrock Setup
 
-Instructions for cloning, building, and running the Flexion fork of opencode with AWS Bedrock.
+Instructions for building and running the Flexion fork of opencode.
 
-## Quick Install
+## AWS Credentials Setup
 
-The installer handles all steps below automatically:
+AWS credentials and opencode configuration are managed by **flexcamp-ai**:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/flexion/opencode/flex/install-flex | bash
+```
+https://github.com/flexion/flexcamp-ai
 ```
 
-You will be prompted for:
-- **Clone directory** (default: `~/opencode`)
-- **AWS account ID** (your personal Flexion account)
-- **Preferred AWS region** (default: `us-east-1`)
-
-Everything else — AWS SSO profile, opencode config, and the `opencode-work` shell function — is written automatically. Skip to [Usage](#4-usage) once the installer finishes.
+Follow the setup instructions there before building or running this fork. flexcamp-ai handles AWS authentication, the `opencode-work` shell function, and `~/.config/opencode/opencode.json`.
 
 ---
 
-## Manual Setup
-
-Follow these steps if you prefer to configure things yourself.
-
-## Prerequisites
+## Prerequisites (build only)
 
 - [Bun](https://bun.sh) v1.3+
-- [AWS CLI](https://aws.amazon.com/cli/) v2
 - Git + SSH key configured for GitHub (with access to the `flexion` org)
 
 ## Clone & Build
@@ -59,116 +49,11 @@ Verify the build:
 ./packages/opencode/dist/opencode-darwin-arm64/bin/opencode --version
 ```
 
-## AWS Bedrock Setup
-
-### 1. Configure AWS SSO profile
-
-Add to `~/.aws/config`:
-
-```ini
-[profile ClaudeCodeAccess]
-sso_start_url  = https://identitycenter.amazonaws.com/ssoins-6684680a9b285ea2
-sso_region     = us-east-2
-sso_account_id = <your-account-id>
-sso_role_name  = ClaudeCodeAccess
-region         = <your-preferred-region>
-```
-
-### 2. Configure opencode for Bedrock
-
-Create `~/.config/opencode/opencode.json`:
-
-```json
-{
-  "$schema": "https://opencode.ai/config.json",
-  "model": "amazon-bedrock/us.anthropic.claude-sonnet-4-6",
-  "enabled_providers": ["amazon-bedrock"],
-  "plugin": [],
-  "provider": {
-    "amazon-bedrock": {
-      "options": {
-        "region": "<your-preferred-region>"
-      },
-      "models": {
-        "writer.palmyra-x4-v1:0": {
-          "name": "Writer Palmyra X4",
-          "tool_call": false,
-          "limit": { "context": 128000, "output": 8192 }
-        },
-        "writer.palmyra-x5-v1:0": {
-          "name": "Writer Palmyra X5",
-          "tool_call": false,
-          "limit": { "context": 1000000, "output": 8192 }
-        },
-        "deepseek.r1-v1:0": {
-          "name": "DeepSeek R1 (A)",
-          "tool_call": false,
-          "reasoning": false,
-          "limit": { "context": 64000, "output": 32768 }
-        },
-        "mistral.pixtral-large-2502-v1:0": {
-          "name": "Mistral Pixtral Large",
-          "tool_call": false,
-          "limit": { "context": 128000, "output": 8192 }
-        },
-        "us.meta.llama4-maverick-17b-instruct-v1:0": {
-          "name": "Meta Llama 4 Maverick 17B",
-          "tool_call": false,
-          "limit": { "context": 1000000, "output": 8192 }
-        },
-        "us.meta.llama4-scout-17b-instruct-v1:0": {
-          "name": "Meta Llama 4 Scout 17B",
-          "tool_call": false,
-          "limit": { "context": 10000000, "output": 8192 }
-        },
-        "amazon.nova-2-lite-v1:0": {
-          "name": "Amazon Nova 2 Lite",
-          "limit": { "context": 300000, "output": 5120 }
-        }
-      }
-    }
-  }
-}
-```
-
-> **Notes on model config keys:** Config keys must match the snapshot model ID exactly (e.g. `writer.palmyra-x5-v1:0`) — the `us.` cross-region inference profile prefix is added automatically at runtime for supported models and regions. The `id` field is only needed if you want the key to differ from the API model ID.
+> **Note on model config:** Config keys in `opencode.json` must match the snapshot model ID exactly (e.g. `writer.palmyra-x5-v1:0`) — the `us.` cross-region inference profile prefix is added automatically at runtime for supported models and regions.
 >
 > **`tool_call: false`:** Models marked with `tool_call: false` do not support tool use in streaming mode on Bedrock. This prevents opencode from sending tool definitions to those models.
 >
 > **`reasoning: false`:** Models marked with `reasoning: false` will have reasoning content stripped from message history before being sent to the model. Required for models like DeepSeek R1 on Bedrock that generate reasoning output but reject it as input in subsequent turns.
-
-### 3. Shell alias
-
-Add to `~/.zshrc` or `~/.bashrc` (replace `~/opencode` with your actual clone path if different):
-
-```bash
-# ── Flexion opencode launcher ─────────────────────────────────────────────────
-opencode-work() {
-  local profile="ClaudeCodeAccess"
-  local arch os
-  case "$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="x64" ;; esac
-  case "$(uname -s)" in Darwin) os="darwin" ;; Linux) os="linux" ;; *)
-    echo "Unsupported OS: $(uname -s)" && return 1 ;; esac
-  echo "Logging in to AWS SSO ($profile)..."
-  aws sso login --profile "$profile" || return 1
-  eval "$(aws configure export-credentials --profile "$profile" --format env)"
-  "$HOME/opencode/packages/opencode/dist/opencode-${os}-${arch}/bin/opencode" "$@"
-}
-# ─────────────────────────────────────────────────────────────────────────────
-```
-
-### 4. Usage
-
-```bash
-# Login and launch
-opencode-work
-
-# Resume a previous session
-opencode-work ses_2541da06dffeSyfI3ed4qvC7Tv
-
-# Re-running after SSO session expires — just run again, it will re-authenticate
-opencode-work
-```
 
 ## Keeping the Fork Up to Date
 
@@ -199,7 +84,6 @@ See [flexion/opencode#2](https://github.com/flexion/opencode/pull/2) for the ful
 | Strip reasoning from history for non-reasoning models | `packages/opencode/src/provider/transform.ts` | Removes reasoning content parts from assistant message history before sending to models with `reasoning: false` — fixes Bedrock rejections when switching from a reasoning model |
 | Exclude palmyra from reasoning variant generation | `packages/opencode/src/provider/transform.ts` | Prevents unsupported `reasoningConfig` parameters from being sent to Writer Palmyra models |
 | Local build & AWS Bedrock setup docs | `LOCAL_AWS_SETUP.md` | This file |
-| Automated installer | `install-flex` | Single-command installer for the entire setup |
 
 Full details and upstream tracking: [flexion/opencode#2](https://github.com/flexion/opencode/pull/2)
 
