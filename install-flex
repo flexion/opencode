@@ -9,11 +9,11 @@
 #   2. Prompts: clone directory
 #   3. Clones git@github.com:flexion/opencode.git (flex branch) — skipped if already present
 #   4. Installs dependencies and builds the native binary
-#   5. Appends opencode-work() launcher function to ~/.zshrc or ~/.bashrc
 #
 # AWS credentials and opencode configuration are managed by flexcamp-ai:
 #   https://github.com/flexion/flexcamp-ai
-# Run flexcamp-ai setup before or after this installer.
+# Use /get-openwork in Slack to get your API key, then run the OpenWork Setup
+# app to complete configuration.
 #
 # Existing files are never overwritten; each step is skipped with a warning
 # if the output already exists.
@@ -111,70 +111,19 @@ clone_and_build() {
   success "Binary built"
 }
 
-# ── step 4: shell launcher function ──────────────────────────────────────────
-write_shell_alias() {
-  local rc_file
-  case "$(basename "${SHELL:-bash}")" in
-    zsh) rc_file="$HOME/.zshrc" ;;
-    *)   rc_file="$HOME/.bashrc" ;;
-  esac
-
-  # Sentinel comment is the idempotency guard — more reliable than matching the
-  # function signature, which a user might remove while leaving a stale comment.
-  if grep -qF "── Flexion opencode launcher ──" "$rc_file" 2>/dev/null; then
-    warn "opencode-work() already defined in $rc_file — skipping"
-    return
-  fi
-
-  info "Appending opencode-work() to $rc_file..."
-
-  # Use printf %q to shell-quote the clone path at install time.
-  # This eliminates the previous Perl s|...|..| substitution which was vulnerable
-  # to injection if CLONE_DIR contained a | character.
-  local clone_dir_q
-  clone_dir_q=$(printf '%q' "$CLONE_DIR")
-
-  # Double-quoted heredoc: $clone_dir_q expands now (install time);
-  # all other $ references are \-escaped so they expand at shell run time.
-  cat >>"$rc_file" <<SHELL_EOF
-
-# ── Flexion opencode launcher ─────────────────────────────────────────────────
-# AWS credentials are managed by flexcamp-ai (github.com/flexion/flexcamp-ai).
-opencode-work() {
-  local clone_dir=$clone_dir_q
-  local arch os
-  case "\$(uname -m)" in arm64|aarch64) arch="arm64" ;; *) arch="x64" ;; esac
-  case "\$(uname -s)" in Darwin) os="darwin" ;; Linux) os="linux" ;; *)
-    echo "Unsupported OS: \$(uname -s)" && return 1 ;; esac
-  "\${clone_dir}/packages/opencode/dist/opencode-\${os}-\${arch}/bin/opencode" "\$@"
-}
-# ─────────────────────────────────────────────────────────────────────────────
-SHELL_EOF
-
-  success "opencode-work() added to $rc_file"
-}
-
 # ── main ──────────────────────────────────────────────────────────────────────
 main() {
   check_prereqs
   gather_inputs
   clone_and_build
-  write_shell_alias
-
-  local rc_file
-  case "$(basename "${SHELL:-bash}")" in
-    zsh) rc_file="$HOME/.zshrc" ;;
-    *)   rc_file="$HOME/.bashrc" ;;
-  esac
 
   printf '\n%s%sInstallation complete!%s\n' "$GREEN" "$BOLD" "$NC"
   printf '────────────────────────────────────────────\n'
   printf '  Binary:   %s/packages/opencode/dist/opencode-*/bin/opencode\n' "$CLONE_DIR"
   printf '\n  Next steps:\n'
-  printf '    1. Set up AWS credentials via flexcamp-ai:\n'
-  printf '       https://github.com/flexion/flexcamp-ai\n'
-  printf '    2. source %s\n' "$rc_file"
-  printf '    3. opencode-work\n\n'
+  printf '    1. Type /get-openwork in Slack to receive your Bedrock API key\n'
+  printf '    2. Download and run OpenWork Setup to complete configuration:\n'
+  printf '       https://github.com/flexion/flexcamp-ai\n\n'
 }
 
 main
