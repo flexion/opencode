@@ -2,15 +2,23 @@
 
 Instructions for building and running the Flexion fork of opencode.
 
-## AWS Credentials Setup
+## AWS Credentials & End-User Install
 
-AWS credentials and opencode configuration are managed by **flexcamp-ai**:
+End-user installation and AWS credentials are managed by **[flexcamp-ai](https://github.com/flexion/flexcamp-ai)** — a macOS menubar app that walks you through a guided setup wizard.
 
-```
-https://github.com/flexion/flexcamp-ai
-```
+**Getting started:**
 
-Follow the setup instructions there before building or running this fork. flexcamp-ai handles AWS authentication, the `opencode-work` shell function, and `~/.config/opencode/opencode.json`.
+1. In Slack, type `/get-openwork` in any channel — the bot will DM you a Bedrock API key, expiration date, and region.
+2. Download **OpenWork Setup** from the link in the DM (or the [latest release](https://github.com/flexion/flexcamp-ai/releases/latest)).
+3. Open the app and run the setup wizard (~2 min). It installs and configures everything: Homebrew/Node.js if needed, OpenCode, the OpenWork desktop app, AWS Bedrock credentials, workspace folder, and pre-built skills.
+4. After setup, click **"Open OpenWork"** or use the menu bar icon.
+
+**Renewing your API key (expires every 7 days):**
+Type `/bedrock-key` in Slack → click the menu bar icon → **"Replace API Key..."** → paste the Slack message.
+
+---
+
+_Developers building from source: continue to the sections below._
 
 ---
 

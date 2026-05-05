@@ -1116,7 +1116,6 @@ describe("ProviderTransform.message - DeepSeek reasoning content", () => {
     )
 
     expect(result[0].content).toEqual([
-      { type: "reasoning", text: "Should not be processed" },
       { type: "text", text: "Answer" },
     ])
     expect(result[0].providerOptions?.openaiCompatible?.reasoning_content).toBeUndefined()
@@ -1369,9 +1368,8 @@ describe("ProviderTransform.message - anthropic empty content filtering", () => 
     const result = ProviderTransform.message(msgs, anthropicModel, {})
 
     expect(result).toHaveLength(1)
-    expect(result[0].content).toHaveLength(2)
-    expect(result[0].content[0]).toEqual({ type: "reasoning", text: "Thinking..." })
-    expect(result[0].content[1]).toEqual({ type: "text", text: "Result" })
+    expect(result[0].content).toHaveLength(1)
+    expect(result[0].content[0]).toEqual({ type: "text", text: "Result" })
   })
 
   test("filters empty content for bedrock provider", () => {
