@@ -127,7 +127,7 @@ export const layer = Layer.effect(
 
     const resolvePromptParts = Effect.fn("SessionPrompt.resolvePromptParts")(function* (template: string) {
       const ctx = yield* InstanceState.context
-      const parts: Types.DeepMutable<PromptInput["parts"]> = [{ type: "text", text: template }]
+      const parts: Types.DeepMutable<PromptInput["parts"]> = [{ type: "text", text: template, synthetic: true }]
       const files = ConfigMarkdown.files(template)
       const seen = new Set<string>()
       yield* Effect.forEach(
@@ -1601,7 +1601,15 @@ NOTE: At any point in time through this workflow you should feel free to ask the
               prompt: templateParts.find((y) => y.type === "text")?.text ?? "",
             },
           ]
-        : [...templateParts, ...(input.parts ?? [])]
+        : [
+            ...templateParts,
+            {
+              type: "text" as const,
+              text: `Running skill: ${input.command}`,
+              ignored: true,
+            },
+            ...(input.parts ?? []),
+          ]
 
       const userAgent = isSubtask ? (input.agent ?? (yield* agents.defaultAgent())) : agentName
       const userModel = isSubtask

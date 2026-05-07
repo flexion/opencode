@@ -192,7 +192,21 @@ const live: Layer.Layer<
         },
       )
 
-      const tools = resolveTools(input)
+      // DeepSeek R1 does not honour the `tools` parameter regardless of which provider
+      // hosts it — neither the direct api.deepseek.com endpoint (model id: deepseek-reasoner,
+      // providerID: deepseek) nor the AWS Bedrock endpoint (model id: deepseek.r1-v1:0,
+      // providerID: amazon-bedrock) support function calling, even though models.dev
+      // incorrectly reports tool_call: true for both. When tools are sent, R1 ignores
+      // the definitions and writes the invocation as markdown text instead.
+      // Detect R1 via the provider-agnostic `family` field ("deepseek-thinking") which
+      // is set for all DeepSeek reasoning variants, or fall back to matching the known
+      // model IDs directly for cases where family is absent.
+      const isDeepSeekR1 =
+        input.model.family === "deepseek-thinking" ||
+        (input.model.providerID === "deepseek" && input.model.api.id.toLowerCase().includes("reasoner")) ||
+        input.model.api.id.toLowerCase().includes("deepseek.r1")
+      const canTool = input.model.capabilities.toolcall && !isDeepSeekR1
+      const tools = canTool ? resolveTools(input) : {}
 
       // LiteLLM and some Anthropic proxies require the tools parameter to be present
       // when message history contains tool calls, even if no tools are being used.
@@ -210,6 +224,7 @@ const live: Layer.Layer<
       // during compaction), inject a stub tool to satisfy the validation requirement.
       // The stub description explicitly tells the model not to call it.
       if (
+        canTool &&
         (isLiteLLMProxy || input.model.providerID.includes("github-copilot")) &&
         Object.keys(tools).length === 0 &&
         hasToolCalls(input.messages)
@@ -364,9 +379,13 @@ const live: Layer.Layer<
         topP: params.topP,
         topK: params.topK,
         providerOptions: ProviderTransform.providerOptions(input.model, params.options),
-        activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
-        tools,
-        toolChoice: input.toolChoice,
+        ...(canTool
+          ? {
+              activeTools: Object.keys(tools).filter((x) => x !== "invalid"),
+              tools,
+            }
+          : {}),
+        ...(canTool ? { toolChoice: input.toolChoice } : {}),
         maxOutputTokens: params.maxOutputTokens,
         abortSignal: input.abort,
         headers: {

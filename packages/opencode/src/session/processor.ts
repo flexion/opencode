@@ -442,6 +442,13 @@ export const layer: Layer.Layer<
               },
               { text: ctx.currentText.text },
             )).text
+            // Some reasoning models (e.g. DeepSeek R1) emit chain-of-thought inside
+            // <think>…</think> tags in the text stream rather than as dedicated
+            // reasoning events. Strip those blocks so they don't appear as visible
+            // text in the UI — they are stored separately via reasoning-start/delta.
+            if (ctx.model.capabilities.reasoning) {
+              ctx.currentText.text = ctx.currentText.text.replace(/<think>[\s\S]*?<\/think>\s*/g, "").trimStart()
+            }
             {
               const end = Date.now()
               ctx.currentText.time = { start: ctx.currentText.time?.start ?? end, end }

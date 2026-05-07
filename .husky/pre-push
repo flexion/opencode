@@ -1,5 +1,11 @@
 #!/bin/sh
 set -e
+
+# Run prek hooks (if installed)
+if command -v prek >/dev/null 2>&1; then
+  prek run --stage pre-push
+fi
+
 # Check if bun version matches package.json
 # keep in sync with packages/script/src/index.ts semver qualifier
 bun -e '

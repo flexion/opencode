@@ -50,6 +50,15 @@ function normalizeMessages(
   model: Provider.Model,
   _options: Record<string, unknown>,
 ): ModelMessage[] {
+  // Strip reasoning parts from assistant messages for models that don't support reasoning
+  if (!model.capabilities.reasoning) {
+    msgs = msgs.map((msg) => {
+      if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+      const filtered = msg.content.filter((part) => (part as any).type !== "reasoning")
+      return { ...msg, content: filtered }
+    })
+  }
+
   // Anthropic rejects messages with empty content - filter out empty string messages
   // and remove empty text/reasoning parts from array content
   if (model.api.npm === "@ai-sdk/anthropic") {
@@ -91,6 +100,30 @@ function normalizeMessages(
         return { ...msg, content: filtered }
       })
       .filter((msg): msg is ModelMessage => msg !== undefined && msg.content !== "")
+  }
+
+  // Strip reasoning parts that have no valid provider signature — they cannot be sent
+  // as thinking blocks to Anthropic without a signature and would cause a 400 error.
+  // This is a defence-in-depth guard; the primary prevention is in message-v2.ts where
+  // reasoning parts from a different model are skipped before reaching this point.
+  // Only applies to reasoning-capable models: non-reasoning models don't produce signed
+  // thinking blocks, so their reasoning parts don't need a signature.
+  if (
+    model.capabilities.reasoning &&
+    (model.api.npm === "@ai-sdk/anthropic" || model.api.npm === "@ai-sdk/amazon-bedrock")
+  ) {
+    msgs = msgs
+      .map((msg) => {
+        if (msg.role !== "assistant" || !Array.isArray(msg.content)) return msg
+        const filtered = msg.content.filter((part) => {
+          if ((part as any).type !== "reasoning") return true
+          const opts = (part as any).providerOptions?.anthropic
+          return opts?.signature != null || opts?.redactedData != null
+        })
+        if (filtered.length === 0) return undefined
+        return { ...msg, content: filtered }
+      })
+      .filter((msg): msg is ModelMessage => msg !== undefined)
   }
 
   if (model.api.id.includes("claude")) {
@@ -452,7 +485,8 @@ export function variants(model: Provider.Model): Record<string, Record<string, a
     id.includes("kimi") ||
     id.includes("k2p") ||
     id.includes("qwen") ||
-    id.includes("big-pickle")
+    id.includes("big-pickle") ||
+    id.includes("palmyra")
   )
     return {}
 

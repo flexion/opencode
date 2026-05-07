@@ -39,6 +39,46 @@ https://github.com/anomalyco/models.dev
   bun dev
   ```
 
+### Setting Up Pre-Commit Hooks
+
+Pre-commit hooks automatically validate code before pushing. This includes:
+- Secret detection (GitLeaks)
+- GitHub Actions linting (actionlint, GHA pinning)
+- Standard checks (trailing whitespace, JSON/YAML validation, etc.)
+- `.env` file protection
+
+We use [prek](https://prek.j178.dev/), a fast Rust-based drop-in replacement for pre-commit.
+
+To install prek:
+
+```bash
+# Using uv (recommended)
+uv tool install prek
+
+# Using pip
+pip install prek
+
+# Using Homebrew
+brew install prek
+
+# Or via standalone installer
+curl --proto '=https' --tlsv1.2 -LsSf https://github.com/j178/prek/releases/latest/download/prek-installer.sh | sh
+```
+
+Then install the git hooks:
+
+```bash
+prek install
+```
+
+This integrates prek into the `pre-push` Husky hook. Hooks will run automatically when you push. To manually run:
+
+```bash
+prek run --stage pre-push                      # Run all hooks
+prek run --stage pre-push --files <file>       # Run on specific file
+prek run gitleaks-docker --stage pre-push      # Run single hook
+```
+
 ### Running against a different directory
 
 By default, `bun dev` runs OpenCode in the `packages/opencode` directory. To run it against a different directory or repository:
